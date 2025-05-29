@@ -4,21 +4,30 @@ export const ChatBar = ({ socket }) => {
   const [users, setUsers] = useState([]);
 
   useEffect(() => {
-    const handleNewUserResponse = (data) => {
-      console.log("Received newUserResponse:", data);
-      // Remove duplicates based on socketID
+    const handleUsers = (data) => {
+      console.log("Received users:", data);
+      // Remove duplicates based on userID (just in case)
       const uniqueUsers = Array.from(
-        new Map(data.map((user) => [user.socketID, user])).values()
+        new Map(data.map((user) => [user.userID, user])).values()
       );
       console.log("Unique users:", uniqueUsers);
       setUsers(uniqueUsers);
     };
 
-    socket.on("newUserResponse", handleNewUserResponse);
+    socket.on("users", handleUsers);
 
-    // Cleanup listener on component unmount
+    // Handle username error
+    socket.on("usernameError", (message) => {
+      console.error("Username error:", message);
+      // Optionally, redirect to home or show an alert
+      localStorage.removeItem("userName");
+      window.location.href = "/"; // Redirect to home
+    });
+
+    // Cleanup listeners on component unmount
     return () => {
-      socket.off("newUserResponse", handleNewUserResponse);
+      socket.off("users", handleUsers);
+      socket.off("usernameError");
     };
   }, [socket]);
 
@@ -35,10 +44,10 @@ export const ChatBar = ({ socket }) => {
         <h4 className="chat__header">ACTIVE USERS</h4>
         <div className="chat__users">
           {users
-            .filter((user) => user.userName !== currentUserName)
-            .map((user, index) => (
-              <p key={user.socketID || `user-${index}`}>
-                {user.userName}
+            .filter((user) => user.username !== currentUserName)
+            .map((user) => (
+              <p key={user.userID}>
+                {user.username}
                 <span className="online-indicator"></span>
               </p>
             ))}

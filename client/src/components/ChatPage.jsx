@@ -14,15 +14,25 @@ export const ChatPage = () => {
 
   // Initialize socket when component mounts
   useEffect(() => {
-    const newSocket = io("http://localhost:3000", {
+    const newSocket = io("http://localhost:3001", {
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
     });
+
+    newSocket.on("connect_error", (error) => {
+      console.error("Connection failed:", error.message);
+      setConnectionError("Failed to connect to server. Retrying...");
+    });
+
+    newSocket.on("connect", () => {
+      console.log("Connected to server");
+      setConnectionError(null);
+    });
+
     setSocket(newSocket);
 
-    // Cleanup: Disconnect socket when component unmounts (e.g., user leaves chat)
     return () => {
       newSocket.disconnect();
       console.log("Socket disconnected on ChatPage unmount");
@@ -37,7 +47,7 @@ export const ChatPage = () => {
       const userName = localStorage.getItem("userName");
       if (userName && !hasEmittedNewUser.current) {
         console.log(`Emitting newUser for ${userName}, socketID: ${socket.id}`);
-        socket.emit("newUser", { userName, socketID: socket.id });
+        socket.emit("newUser", { userName });
         hasEmittedNewUser.current = true;
         setConnectionError(null);
       }
@@ -74,7 +84,7 @@ export const ChatPage = () => {
       hasEmittedNewUser.current = false;
       const userName = localStorage.getItem("userName");
       if (userName) {
-        socket.emit("newUser", { userName, socketID: socket.id });
+        socket.emit("newUser", { userName });
       }
     };
 
@@ -111,20 +121,14 @@ export const ChatPage = () => {
       setTypingStatus("");
     };
 
-    const handleNewUserResponse = (data) => {
-      console.log("Received newUserResponse in ChatPage:", data);
-    };
-
     socket.on("messageResponse", handleMessageResponse);
     socket.on("typingResponse", handleTypingResponse);
     socket.on("stopTypingResponse", handleStopTypingResponse);
-    socket.on("newUserResponse", handleNewUserResponse);
 
     return () => {
       socket.off("messageResponse", handleMessageResponse);
       socket.off("typingResponse", handleTypingResponse);
       socket.off("stopTypingResponse", handleStopTypingResponse);
-      socket.off("newUserResponse", handleNewUserResponse);
     };
   }, [socket]);
 

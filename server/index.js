@@ -11,28 +11,50 @@ const io = new Server(httpServer, {
     origin: "http://localhost:5173",
   },
 });
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 app.use(cors());
-let users = [];
 
+// Handle socket connections
 io.on("connection", (socket) => {
   console.log(`A user connected: ${socket.id}`);
 
-  // Send current user list to the newly connected client
-  socket.emit("newUserResponse", users);
-
   // Handle new user
   socket.on("newUser", (data) => {
-    const socketID = data.socketID || socket.id; // Use socket.id as fallback
-    if (!users.some((user) => user.socketID === socketID)) {
-      users.push({ ...data, socketID });
-      console.log(`${data.userName} has joined the chat!`);
-      console.log("Current users:", users);
-      io.emit("newUserResponse", users);
-    } else {
-      console.log(`User ${data.userName} already exists with socketID ${socketID}`);
+    const { userName } = data;
+    console.log(`newUser event received: ${userName}`);
+    if (!userName) {
+      console.log("No username provided");
+      return;
     }
+
+    // Check for duplicate username
+    const existingUser = Array.from(io.of("/").sockets).some(
+      ([, s]) => s.username === userName && s.id !== socket.id
+    );
+    if (existingUser) {
+      console.log(`Username ${userName} already exists`);
+      socket.emit("usernameError", "Username already taken");
+      return;
+    }
+
+    // Store username in socket object
+    socket.username = userName;
+    console.log(`${userName} has joined the chat!`);
+
+    // Send current user list to the newly connected client
+    const users = [];
+    for (let [id, socket] of io.of("/").sockets) {
+      if (socket.username) {
+        users.push({
+          userID: id,
+          username: socket.username,
+        });
+      }
+    }
+    console.log(`Sending users list: ${JSON.stringify(users)}`);
+    socket.emit("users", users); // Send to the new client
+    socket.broadcast.emit("users", users); // Broadcast to other clients
   });
 
   // Handle typing
@@ -56,8 +78,17 @@ io.on("connection", (socket) => {
   // Handle disconnection
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${socket.id}`);
-    users = users.filter((user) => user.socketID !== socket.id);
-    io.emit("newUserResponse", users);
+    // Update user list
+    const updatedUsers = [];
+    for (let [id, socket] of io.of("/").sockets) {
+      if (socket.username) {
+        updatedUsers.push({
+          userID: id,
+          username: socket.username,
+        });
+      }
+    }
+    io.emit("users", updatedUsers); // Broadcast to all clients on disconnect
   });
 });
 
