@@ -195,3 +195,13 @@
   font-style: italic;
   text-align: center;
 }
+
+.current-user {
+  font-weight: bold;
+  color: #007bff;
+}
+.no-users {
+  color: #888;
+  font-style: italic;
+  text-align: center;
+}
