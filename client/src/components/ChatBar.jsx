@@ -36,6 +36,9 @@ export const ChatBar = ({ socket }) => {
   }, [users]);
 
   const currentUserName = localStorage.getItem("userName");
+  const filteredUsers = users.filter(
+    (user) => user.username !== currentUserName
+  );
 
   return (
     <div className="chat__sidebar">
@@ -43,14 +46,16 @@ export const ChatBar = ({ socket }) => {
       <div>
         <h4 className="chat__header">ACTIVE USERS</h4>
         <div className="chat__users">
-          {users
-            .filter((user) => user.username !== currentUserName)
-            .map((user) => (
+          {filteredUsers.length > 0 ? (
+            filteredUsers.map((user) => (
               <p key={user.userID}>
                 {user.username}
                 <span className="online-indicator"></span>
               </p>
-            ))}
+            ))
+          ) : (
+            <p className="no-users">No users connected</p>
+          )}
         </div>
       </div>
     </div>
