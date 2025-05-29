@@ -60,3 +60,13 @@ export const refresh = async (req, res, next) => {
         next(err)
     }
 }
+
+export const me = async (req, res, next) => {
+    try {
+        const { id } = req.user
+        const user = await authService.getUser(id)
+        return res.json(user)
+    } catch (err) {
+        next(err)
+    }
+}

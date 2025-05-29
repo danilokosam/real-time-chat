@@ -65,3 +65,15 @@ export const refresh = async (refreshToken) => {
     await pool.query('UPDATE Users SET refresh_token = $1 WHERE id = $2', [newRefreshToken, foundUser.id])
     return { accessToken, newRefreshToken }
 }
+
+export const getUser = async (id) => {
+    const user = await pool.query('SELECT * FROM Users WHERE id = $1', [id])
+    const foundUser = user.rows[0]
+    if (!foundUser) {
+        throw new AppError('El usuario no esta autenticado', 401)
+    }
+    delete foundUser.password
+    delete foundUser.refresh_token
+
+    return foundUser
+}
