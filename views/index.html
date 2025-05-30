@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebChat - Autenticación</title>
+  <title>WebChat - Aplicación en tiempo real</title>
   <style>
     * {
       margin: 0;
@@ -129,17 +128,19 @@
       border-radius: 15px;
       box-shadow: 0 10px 30px rgba(0,0,0,0.2);
       width: 100%;
-      max-width: 800px;
-      padding: 2rem;
+      max-width: 1000px;
+      height: 80vh;
+      padding: 0;
+      overflow: hidden;
     }
 
     .chat-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 1.5rem;
-      padding-bottom: 1rem;
+      padding: 1rem 2rem;
       border-bottom: 2px solid #e1e5e9;
+      background: #f8f9fa;
     }
 
     .user-info {
@@ -160,19 +161,81 @@
       font-weight: bold;
     }
 
+    .chat-layout {
+      display: flex;
+      height: calc(80vh - 60px);
+    }
+
+    .chat-sidebar {
+      width: 300px;
+      border-right: 2px solid #e1e5e9;
+      display: flex;
+      flex-direction: column;
+      background: #f8f9fa;
+    }
+
+    .chat-list-header {
+      padding: 1rem;
+      border-bottom: 1px solid #e1e5e9;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chat-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem;
+    }
+
+    .chat-item {
+      padding: 0.75rem;
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    .chat-item:hover {
+      background-color: #e9ecef;
+    }
+
+    .chat-item.active {
+      background-color: #e1e5e9;
+    }
+
+    .chat-item-name {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .chat-item-preview {
+      font-size: 0.85rem;
+      color: #666;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .chat-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
     .chat-messages {
-      height: 400px;
-      border: 2px solid #e1e5e9;
-      border-radius: 10px;
+      flex: 1;
       padding: 1rem;
       overflow-y: auto;
-      margin-bottom: 1rem;
       background: #f8f9fa;
     }
 
     .chat-input-container {
+      padding: 1rem;
+      border-top: 2px solid #e1e5e9;
       display: flex;
       gap: 0.5rem;
+      background: white;
     }
 
     .chat-input {
@@ -184,17 +247,43 @@
     }
 
     .message {
-      margin-bottom: 0.5rem;
-      padding: 0.5rem;
-      border-radius: 8px;
+      margin-bottom: 1rem;
+      max-width: 80%;
+      clear: both;
+    }
+
+    .message-outgoing {
+      float: right;
+      background: #dcf8c6;
+      border-radius: 15px 0 15px 15px;
+      padding: 0.75rem;
+      margin-left: 20%;
+    }
+
+    .message-incoming {
+      float: left;
       background: white;
-      border-left: 4px solid #4A90E2;
+      border-radius: 0 15px 15px 15px;
+      padding: 0.75rem;
+      border: 1px solid #e1e5e9;
+      margin-right: 20%;
     }
 
     .message-header {
       font-size: 0.8rem;
       color: #666;
       margin-bottom: 0.25rem;
+    }
+
+    .message-content {
+      word-wrap: break-word;
+    }
+
+    .message-time {
+      font-size: 0.7rem;
+      color: #666;
+      text-align: right;
+      margin-top: 0.25rem;
     }
 
     .loading {
@@ -248,6 +337,69 @@
       background: #17a2b8;
     }
 
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-content {
+      background-color: white;
+      padding: 2rem;
+      border-radius: 15px;
+      width: 90%;
+      max-width: 500px;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .modal-title {
+      font-size: 1.5rem;
+      color: #4A90E2;
+    }
+
+    .modal-close {
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: #666;
+    }
+
+    .typing-indicator {
+      font-style: italic;
+      color: #666;
+      padding: 0.5rem;
+      display: none;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #666;
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .empty-state-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      color: #4A90E2;
+    }
+
     @media (max-width: 768px) {
       .auth-container {
         flex-direction: column;
@@ -261,6 +413,21 @@
 
       .header h1 {
         font-size: 2rem;
+      }
+
+      .chat-layout {
+        flex-direction: column;
+      }
+
+      .chat-sidebar {
+        width: 100%;
+        height: 30%;
+        border-right: none;
+        border-bottom: 2px solid #e1e5e9;
+      }
+
+      .chat-main {
+        height: 70%;
       }
     }
   </style>
@@ -282,7 +449,7 @@
       <form id="registerForm">
         <div class="form-group">
           <label for="regName">Nombre</label>
-          <input type="text" id="regName" name="name" placeholder="Tu nombre completo" required />
+          <input type="text" id="regName" name="username" placeholder="Tu nombre completo" required />
         </div>
         <div class="form-group">
           <label for="regEmail">Correo electrónico</label>
@@ -324,22 +491,59 @@
       <button class="btn btn-secondary" id="logoutBtn">Cerrar Sesión</button>
     </div>
 
-    <div class="chat-messages" id="chatMessages">
-      <div class="message">
-        <div class="message-header">Sistema - Ahora</div>
-        <div>¡Bienvenido al chat! Pronto podrás enviar mensajes en tiempo real.</div>
+    <div class="chat-layout">
+      <div class="chat-sidebar">
+        <div class="chat-list-header">
+          <h3>Mis Chats</h3>
+          <button class="btn btn-primary" id="newChatBtn" style="width: auto; padding: 0.5rem 1rem;">Nuevo Chat</button>
+        </div>
+        <div class="chat-list" id="chatList">
+          <!-- Chat list will be populated here -->
+          <div class="empty-state">
+            <div class="empty-state-icon">💬</div>
+            <p>No tienes chats activos</p>
+            <p>Crea un nuevo chat para comenzar</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-main">
+        <div class="chat-messages" id="chatMessages">
+          <div class="empty-state">
+            <div class="empty-state-icon">👋</div>
+            <p>Selecciona un chat para ver los mensajes</p>
+            <p>o crea uno nuevo para comenzar a chatear</p>
+          </div>
+        </div>
+        <div class="typing-indicator" id="typingIndicator">Alguien está escribiendo...</div>
+        <div class="chat-input-container">
+          <input 
+            type="text" 
+            class="chat-input" 
+            id="messageInput" 
+            placeholder="Escribe tu mensaje aquí..." 
+            disabled
+          />
+          <button class="btn btn-primary" id="sendBtn" style="width: auto;" disabled>Enviar</button>
+        </div>
       </div>
     </div>
+  </div>
 
-    <div class="chat-input-container">
-      <input 
-        type="text" 
-        class="chat-input" 
-        id="messageInput" 
-        placeholder="Escribe tu mensaje aquí..." 
-        disabled
-      />
-      <button class="btn btn-primary" id="sendBtn" disabled>Enviar</button>
+  <!-- Modal para crear nuevo chat -->
+  <div class="modal" id="newChatModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">Crear Nuevo Chat</h3>
+        <span class="modal-close" id="closeModalBtn">&times;</span>
+      </div>
+      <form id="newChatForm">
+        <div class="form-group">
+          <label for="receiverUsername">Usuario Destinatario</label>
+          <input type="text" id="receiverUsername" name="receiverUsername" placeholder="Nombre de usuario" required />
+        </div>
+        <button type="submit" class="btn btn-primary">Crear Chat</button>
+      </form>
     </div>
   </div>
 
@@ -360,10 +564,19 @@
     const chatMessages = document.getElementById('chatMessages');
     const messageInput = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
+    const chatList = document.getElementById('chatList');
+    const newChatBtn = document.getElementById('newChatBtn');
+    const newChatModal = document.getElementById('newChatModal');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const newChatForm = document.getElementById('newChatForm');
+    const typingIndicator = document.getElementById('typingIndicator');
 
     // Estado de la aplicación
     let currentUser = null;
     let socket = null;
+    let activeChat = null;
+    let chats = [];
+    let typingTimeout = null;
 
     // Funciones de utilidad
     function showNotification(message, type = 'info') {
@@ -481,12 +694,13 @@
 
     function handleLogout() {
       currentUser = null;
+      activeChat = null;
+      chats = [];
       if (socket) {
         socket.disconnect();
         socket = null;
       }
       showAuth();
-      showNotification('Sesión expirada. Inicia sesión nuevamente.', 'info');
     }
 
     function initializeSocket() {
@@ -502,7 +716,7 @@
 
       socket.on('connect', () => {
         console.log('Conectado al WebSocket');
-        addMessage('Sistema', 'Conectado al chat en tiempo real', new Date());
+        addSystemMessage('Conectado al chat en tiempo real');
         // Habilitar chat cuando esté conectado
         messageInput.disabled = false;
         sendBtn.disabled = false;
@@ -510,29 +724,168 @@
 
       socket.on('disconnect', () => {
         console.log('Desconectado del WebSocket');
-        addMessage('Sistema', 'Desconectado del chat', new Date());
+        addSystemMessage('Desconectado del chat');
         // Deshabilitar chat cuando esté desconectado
         messageInput.disabled = true;
         sendBtn.disabled = true;
       });
 
-      socket.on('chatMessage', (data) => {
-        addMessage(data.user || 'Usuario', data.message, new Date(data.date));
+      socket.on('allChats', (data) => {
+        console.log('Chats recibidos:', data);
+        renderChatList(data);
+      });
+
+      socket.on('messagesChat', (messages) => {
+        console.log('Mensajes recibidos:', messages);
+        renderMessages(messages);
+      });
+
+      socket.on('createChat', (newChat) => {
+        console.log('Nuevo chat creado:', newChat);
+        showNotification('Chat creado correctamente', 'success');
+        // Actualizar la lista de chats
+        socket.emit('allChats');
+      });
+
+      socket.on('sendMessage', (data) => {
+        console.log('Mensaje recibido:', data);
+        if (activeChat) {
+          addMessage(data.usernameSender, data.message, new Date(data.date), false);
+        }
       });
 
       socket.on('typing', (data) => {
         console.log('Usuario escribiendo:', data);
+        showTypingIndicator();
       });
 
       socket.on('connect_error', (error) => {
         console.error('Error de conexión WebSocket:', error);
-        addMessage('Sistema', 'Error de conexión al chat', new Date());
+        addSystemMessage('Error de conexión al chat');
+      });
+
+      socket.on('error_message', (err) => {
+        console.error(err)
+      })
+    }
+
+    function showTypingIndicator() {
+      typingIndicator.style.display = 'block';
+      
+      // Limpiar el timeout anterior si existe
+      if (typingTimeout) {
+        clearTimeout(typingTimeout);
+      }
+      
+      // Ocultar el indicador después de 2 segundos
+      typingTimeout = setTimeout(() => {
+        typingIndicator.style.display = 'none';
+      }, 2000);
+    }
+
+    function renderChatList(chatData) {
+      chatList.innerHTML = '';
+      
+      if (!chatData || (Array.isArray(chatData) && chatData.length === 0) || chatData.message) {
+        chatList.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">💬</div>
+            <p>No tienes chats activos</p>
+            <p>Crea un nuevo chat para comenzar</p>
+          </div>
+        `;
+        return;
+      }
+      
+      chats = Array.isArray(chatData) ? chatData : [chatData];
+      
+      chats.forEach(chat => {
+        const chatItem = document.createElement('div');
+        chatItem.className = 'chat-item';
+        chatItem.dataset.chatId = chat.id;
+        
+        if (activeChat && activeChat.id === chat.id) {
+          chatItem.classList.add('active');
+        }
+        
+        // Mostrar el nombre del otro usuario en el chat
+        const otherUser = chat.user1 === currentUser.id ? 
+          chat.user2_username : chat.user1_username;
+        
+        chatItem.innerHTML = `
+          <div class="chat-item-name">${chat.name}</div>
+          <div class="chat-item-preview">Chat con ${otherUser}</div>
+        `;
+        
+        chatItem.addEventListener('click', () => {
+          document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('active'));
+          chatItem.classList.add('active');
+          activeChat = chat;
+          
+          socket.emit('joinChat', chat.id, 50, 0);
+          chatMessages.innerHTML = '';
+        });
+        
+        chatList.appendChild(chatItem);
       });
     }
 
-    function addMessage(user, message, date) {
+    function renderMessages(messages) {
+      // Limpiar mensajes anteriores excepto el mensaje del sistema
+      const systemMessages = Array.from(chatMessages.querySelectorAll('.message')).filter(
+        msg => msg.classList.contains('system-message')
+      );
+      chatMessages.innerHTML = '';
+      systemMessages.forEach(msg => chatMessages.appendChild(msg));
+      
+      if (!messages || messages.message) {
+        addSystemMessage(messages?.message || 'No hay mensajes en este chat');
+        return;
+      }
+      
+      messages.forEach(msg => {
+        const isOutgoing = msg.sender === currentUser.id;
+        addMessage(
+          isOutgoing ? currentUser.username : msg.sender_username,
+          msg.message,
+          new Date(msg.created_at || Date.now()),
+          isOutgoing
+        );
+      });
+      
+      // Scroll al final
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function addSystemMessage(text) {
       const messageDiv = document.createElement('div');
-      messageDiv.className = 'message';
+      messageDiv.className = 'message system-message';
+      messageDiv.style.textAlign = 'center';
+      messageDiv.style.float = 'none';
+      messageDiv.style.clear = 'both';
+      messageDiv.style.background = '#f0f0f0';
+      messageDiv.style.padding = '0.5rem';
+      messageDiv.style.borderRadius = '8px';
+      messageDiv.style.margin = '0.5rem auto';
+      messageDiv.style.maxWidth = '80%';
+      
+      const timeString = new Date().toLocaleTimeString('es-ES', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
+      messageDiv.innerHTML = `
+        <div class="message-header">Sistema - ${timeString}</div>
+        <div class="message-content">${text}</div>
+      `;
+      
+      chatMessages.appendChild(messageDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function addMessage(user, message, date, isOutgoing = false) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${isOutgoing ? 'message-outgoing' : 'message-incoming'}`;
       
       const timeString = date.toLocaleTimeString('es-ES', {
         hour: '2-digit',
@@ -540,12 +893,37 @@
       });
       
       messageDiv.innerHTML = `
-        <div class="message-header">${user} - ${timeString}</div>
-        <div>${message}</div>
+        <div class="message-header">${user}</div>
+        <div class="message-content">${message}</div>
+        <div class="message-time">${timeString}</div>
       `;
       
       chatMessages.appendChild(messageDiv);
+      
+      // Limpiar el div para el siguiente mensaje
+      const clearDiv = document.createElement('div');
+      clearDiv.style.clear = 'both';
+      chatMessages.appendChild(clearDiv);
+      
       chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function sendMessage() {
+      const message = messageInput.value.trim();
+      if (message && socket && currentUser && activeChat) {
+        // Determinar el destinatario (el otro usuario en el chat)
+        const receiverUsername = activeChat.user1 === currentUser.id ? 
+          activeChat.user2_username : activeChat.user1_username;
+        
+        socket.emit('sendMessage', message, activeChat.id, receiverUsername);
+        
+        // Agregar mensaje a la UI inmediatamente
+        addMessage(currentUser.username, message, new Date(), true);
+        
+        messageInput.value = '';
+      } else if (!activeChat) {
+        showNotification('Selecciona un chat primero', 'error');
+      }
     }
 
     // Event Listeners
@@ -624,24 +1002,47 @@
       }
       
       // Emitir evento de "escribiendo"
-      if (socket && messageInput.value.length > 0) {
+      if (socket && messageInput.value.length > 0 && activeChat) {
         socket.emit('typing', { user: currentUser?.username });
       }
     });
 
     sendBtn.addEventListener('click', sendMessage);
 
-    function sendMessage() {
-      const message = messageInput.value.trim();
-      if (message && socket && currentUser) {
-        socket.emit('chatMessage', {
-          message: message,
-          user: currentUser.username,
-          date: new Date()
-        });
-        messageInput.value = '';
+    newChatBtn.addEventListener('click', () => {
+      newChatModal.style.display = 'flex';
+    });
+
+    closeModalBtn.addEventListener('click', () => {
+      newChatModal.style.display = 'none';
+    });
+
+    window.addEventListener('click', (e) => {
+      if (e.target === newChatModal) {
+        newChatModal.style.display = 'none';
       }
-    }
+    });
+
+    newChatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+  
+      const receiverUsername = document.getElementById('receiverUsername').value.trim();
+      
+      if (!receiverUsername) {
+        showNotification('Por favor completa todos los campos', 'error');
+        return;
+      }
+      
+      if (socket && currentUser) {
+        socket.emit('createChat', {
+          user1: currentUser.id,
+          user2: receiverUsername
+        });
+        
+        newChatForm.reset();
+        newChatModal.style.display = 'none';
+      }
+    });
 
     // Inicializar aplicación
     window.addEventListener('load', () => {
