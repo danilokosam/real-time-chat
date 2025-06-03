@@ -1,46 +1,53 @@
 import { useState, useEffect, useRef } from "react";
 
-export const ChatFooter = ({ socket }) => {
+// ChatFooter component handles message input and sending for public or private chats
+export const ChatFooter = ({ socket, selectedUser }) => {
   const [message, setMessage] = useState("");
   const typingTimeoutRef = useRef(null);
 
+  // Handle typing indicator
   const handleTyping = () => {
-    const userNameHandleTyping = localStorage.getItem("userName");
-    console.log(`${userNameHandleTyping} is typing...`);
-    socket.emit("typing", `${localStorage.getItem("userName")} is typing...`);
+    const userName = localStorage.getItem("userName");
+    console.log(`${userName} is typing...`);
+    socket.emit("typing", `${userName} is typing...`);
 
-    // Clear any existing timeout
+    // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
 
-    // Set a timeout to emit stopTyping after 1 second of inactivity
+    // Set timeout to stop typing after 1 second of inactivity
     typingTimeoutRef.current = setTimeout(() => {
       socket.emit("stopTyping");
     }, 1000);
   };
 
+  // Handle sending public or private messages
   const handleSendMessage = (e) => {
     e.preventDefault();
     const userName = localStorage.getItem("userName");
-    console.log(`Sending message: ${message} from ${userName}`);
     if (message.trim() && userName) {
-      const timestamp = new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      }); // Format as HH:MM AM/PM (e.g., 02:30 PM)
-      socket.emit("message", {
-        text: message,
-        name: userName,
-        id: `${socket.id}${Math.random()}`,
-        socketID: socket.id,
-        timestamp: timestamp, // Add timestamp
-      });
-      console.log(`Message sent: ${message}`);
-      socket.emit("stopTyping"); // Stop typing status when message is sent
+      if (selectedUser) {
+        // Send private message
+        console.log(
+          `Sending private message to ${selectedUser.username}: ${message}`
+        );
+        socket.emit("privateMessage", {
+          content: message,
+          to: selectedUser.userID,
+          fromUsername: userName,
+        });
+      } else {
+        // Send public message
+        console.log(`Sending public message: ${message} from ${userName}`);
+        socket.emit("message", {
+          text: message,
+          userName,
+        });
+        socket.emit("stopTyping"); // Stop typing status for public chat
+      }
+      setMessage("");
     }
-    setMessage("");
   };
 
   // Clean timeout on component unmount
@@ -57,7 +64,9 @@ export const ChatFooter = ({ socket }) => {
       <form className="form" onSubmit={handleSendMessage}>
         <input
           type="text"
-          placeholder="Write message"
+          placeholder={
+            selectedUser ? `Message ${selectedUser.username}` : "Write message"
+          }
           className="message"
           value={message}
           onChange={(e) => setMessage(e.target.value)}

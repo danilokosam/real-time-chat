@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 
 // ChatBar component displays the sidebar with a list of active users in the chat
-// Receives the socket prop for real-time communication with the server
-export const ChatBar = ({ socket }) => {
+// Receives socket for real-time communication and setSelectedUser to initiate private chats
+export const ChatBar = ({ socket, setSelectedUser }) => {
   // State to store the list of connected users
   const [users, setUsers] = useState([]);
 
@@ -12,7 +12,7 @@ export const ChatBar = ({ socket }) => {
     const handleUsers = (data) => {
       console.log("Received users:", data);
 
-      // Remove any duplicate users based on userID (precautionary)
+      // Remove any duplicate users based on userID
       // Map to add a 'self' property to identify the current user
       const uniqueUsers = Array.from(
         new Map(data.map((user) => [user.userID, user])).values()
@@ -59,12 +59,31 @@ export const ChatBar = ({ socket }) => {
     console.log("Users state updated:", users);
   }, [users]); // Dependency: re-run when users state changes
 
+  // Handle clicking a user to start a private chat
+  const handleUserClick = (user) => {
+    if (!user.self) {
+      // Prevent selecting self for private chat
+      setSelectedUser({ userID: user.userID, username: user.username });
+      console.log(`Selected user for private chat: ${user.username}`);
+    }
+  };
+
+  // Handle returning to public chat
+  const handlePublicChatClick = () => {
+    setSelectedUser(null);
+    console.log("Returned to public chat");
+  };
+
   // Render the sidebar UI
   return (
     <div className="chat__sidebar">
       {/* Sidebar header */}
       <h2>Open Chat</h2>
       <div>
+        {/* Button to return to public chat */}
+        <button onClick={handlePublicChatClick} className="public-chat-button">
+          Public Chat
+        </button>
         {/* Section header for active users */}
         <h4 className="chat__header">ACTIVE USERS</h4>
         {/* Container for the user list */}
@@ -75,7 +94,8 @@ export const ChatBar = ({ socket }) => {
               // Each user is displayed in a paragraph element with a unique key
               <p
                 key={user.userID} // Use userID as a unique key for React's rendering
-                className={user.self ? "current-user" : ""} // Apply special styling for the current user
+                className={user.self ? "current-user" : "user-selectable"} // Style current user or make others clickable
+                onClick={() => handleUserClick(user)} // Trigger private chat on click
               >
                 {/* Display "username (You)" for the current user, otherwise just the username */}
                 {user.self ? `${user.username} (You)` : user.username}

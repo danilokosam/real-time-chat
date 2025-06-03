@@ -2,6 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import cors from "cors";
 import { Server } from "socket.io";
+import { v4 as uuidv4 } from "uuid";
 
 const app = express();
 const httpServer = createServer(app);
@@ -57,6 +58,36 @@ io.on("connection", (socket) => {
     socket.broadcast.emit("users", users); // Broadcast to other clients
   });
 
+  // Handle private messages 🔏
+  socket.on("privateMessage", ({ content, to, fromUsername }) => {
+    console.log(
+      `Private message from ${fromUsername} (socket: ${socket.id}) to ${to}: ${content}`
+    );
+    // Verify recipient socket exists
+    const recipientSocket = io.sockets.sockets.get(to);
+    if (!recipientSocket) {
+      console.log(`Recipient socket ${to} not found`);
+    } else {
+      console.log(`Sending private message to ${to}`);
+    }
+    const message = {
+      id: uuidv4(), // Unique message ID
+      content,
+      from: socket.id,
+      fromUsername,
+      to,
+      timestamp: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }), // Format as HH:MM AM/PM
+    };
+    // Send to recipient
+    socket.to(to).emit("privateMessage", message);
+    // Send back to sender
+    socket.emit("privateMessage", message);
+  });
+
   // Handle typing
   socket.on("typing", (data) => {
     console.log("Received typing:", data);
@@ -69,10 +100,20 @@ io.on("connection", (socket) => {
     socket.broadcast.emit("stopTypingResponse");
   });
 
-  // Handle messages
+  // Handle public messages
   socket.on("message", (data) => {
     console.log("Received message:", data);
-    io.emit("messageResponse", data);
+    const message = {
+      id: uuidv4(), // Unique message ID
+      text: data.text,
+      userName: data.userName,
+      timestamp: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }), // Format as HH:MM AM/PM
+    };
+    io.emit("messageResponse", message);
   });
 
   // Handle disconnection
