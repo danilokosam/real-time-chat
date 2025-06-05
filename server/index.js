@@ -16,9 +16,22 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 
+// Object to store unread private messages
+const unreadMessages = new Map(); // Map: userID => [{ content, from, fromUsername, timestamp }]
+
+// Object to store the currently selected user for each socket
+const selectedUsers = new Map(); // Map: socketID => selectedUserID
+
 // Handle socket connections
 io.on("connection", (socket) => {
   console.log(`A user connected: ${socket.id}`);
+
+  // Initialize unread messages and selected user for the connected user
+  unreadMessages.set(socket.id, []);
+  selectedUsers.set(socket.id, null);
+
+  // Upon connection, send unread messages
+  socket.emit("unreadMessages", unreadMessages.get(socket.id) || []);
 
   // Handle new user
   socket.on("newUser", (data) => {
@@ -44,21 +57,25 @@ io.on("connection", (socket) => {
     console.log(`${userName} has joined the chat!`);
 
     // Send current user list to the newly connected client
-    const users = [];
-    for (let [id, socket] of io.of("/").sockets) {
-      if (socket.username) {
-        users.push({
-          userID: id,
-          username: socket.username,
-        });
-      }
-    }
+    const users = Array.from(io.of("/").sockets)
+      .map(([, s]) => ({
+        userID: s.id,
+        username: s.username,
+        unreadCount: (unreadMessages.get(s.id) || []).length, // Incluir conteo de mensajes no leídos
+      }))
+      .filter((user) => user.username); // Filtrar sockets sin nombre de usuario
     console.log(`Sending users list: ${JSON.stringify(users)}`);
     socket.emit("users", users); // Send to the new client
     socket.broadcast.emit("users", users); // Broadcast to other clients
   });
 
-  // Handle private messages 🔏
+  // Handle setting the selected user for private chat
+  socket.on("setSelectedUser", (selectedUserID) => {
+    console.log(`User ${socket.id} selected user: ${selectedUserID}`);
+    selectedUsers.set(socket.id, selectedUserID); // Update selected user
+  });
+
+  // Handle private messages 🔏 +++++++
   socket.on("privateMessage", ({ content, to, fromUsername }) => {
     console.log(
       `Private message from ${fromUsername} (socket: ${socket.id}) to ${to}: ${content}`
@@ -67,8 +84,7 @@ io.on("connection", (socket) => {
     const recipientSocket = io.sockets.sockets.get(to);
     if (!recipientSocket) {
       console.log(`Recipient socket ${to} not found`);
-    } else {
-      console.log(`Sending private message to ${to}`);
+      return;
     }
     const message = {
       id: uuidv4(), // Unique message ID
@@ -82,22 +98,86 @@ io.on("connection", (socket) => {
         hour12: true,
       }), // Format as HH:MM AM/PM
     };
-    // Send to recipient
-    socket.to(to).emit("privateMessage", message);
-    // Send back to sender
-    socket.emit("privateMessage", message);
+
+    // Only add to unread messages if the recipient is not in a private chat with the sender
+    if (selectedUsers.get(to) !== socket.id) {
+      const recipientUnread = unreadMessages.get(to) || [];
+      recipientUnread.push(message);
+      unreadMessages.set(to, recipientUnread);
+      socket.to(to).emit("unreadMessages", recipientUnread); // Notify recipient of new unread messages
+    }
+
+    socket.to(to).emit("privateMessage", message); // Send to recipient
+    socket.emit("privateMessage", message); // Send back to sender
+
+    // Update user list with unread count
+    const users = Array.from(io.of("/").sockets)
+      .map(([, s]) => ({
+        userID: s.id,
+        username: s.username,
+        unreadCount: (unreadMessages.get(s.id) || []).length,
+      }))
+      .filter((user) => user.username);
+
+    // Enviar lista de usuarios solo al remitente y al destinatario
+    socket.emit("users", users); // Enviar al remitente
+    socket.to(to).emit("users", users); // Enviar al destinatario
+  });
+  // Handle private messages 🔏 -----
+
+  // Event to clear unread messages when a user opens the chat 🧽
+  socket.on("clearUnreadMessages", (targetUserID) => {
+    unreadMessages.set(
+      socket.id,
+      (unreadMessages.get(socket.id) || []).filter(
+        (msg) => msg.from !== targetUserID
+      )
+    );
+    socket.emit("unreadMessages", unreadMessages.get(socket.id) || []); // Send updated unread messages
+
+    // Update user list
+    const users = Array.from(io.of("/").sockets)
+      .map(([, s]) => ({
+        userID: s.id,
+        username: s.username,
+        unreadCount: (unreadMessages.get(s.id) || []).length,
+      }))
+      .filter((user) => user.username);
+    socket.emit("users", users); // Send to the client who cleared the messages
+    socket.to(targetUserID).emit("users", users); // Send to the target user
   });
 
-  // Handle typing
+  // Handle typing ✍️
   socket.on("typing", (data) => {
     console.log("Received typing:", data);
-    socket.broadcast.emit("typingResponse", data);
+    if (data.to) {
+      // Private chat: send only to the recipient
+      socket.to(data.to).emit("typingResponse", {
+        userName: data.userName,
+        to: data.to,
+        from: socket.id,
+      });
+    } else {
+      // Public chat: send to all except the sender
+      socket.broadcast.emit("typingResponse", {
+        userName: data.userName,
+        to: null,
+      });
+    }
   });
 
-  // Handle stop typing
-  socket.on("stopTyping", () => {
-    console.log("Received stopTyping");
-    socket.broadcast.emit("stopTypingResponse");
+  // Handle stop typing ✍️🛑
+  socket.on("stopTyping", (data) => {
+    console.log("Received stopTyping", data);
+    if (data.to) {
+      // Private chat: send only to the recipient
+      socket
+        .to(data.to)
+        .emit("stopTypingResponse", { to: data.to, from: socket.id });
+    } else {
+      // Public chat: send to all except the sender
+      socket.broadcast.emit("stopTypingResponse", { to: null });
+    }
   });
 
   // Handle public messages
@@ -119,17 +199,17 @@ io.on("connection", (socket) => {
   // Handle disconnection
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${socket.id}`);
+    unreadMessages.delete(socket.id); // Remove unread messages for disconnected user
+    selectedUsers.delete(socket.id); // Clean up selected user
     // Update user list
-    const updatedUsers = [];
-    for (let [id, socket] of io.of("/").sockets) {
-      if (socket.username) {
-        updatedUsers.push({
-          userID: id,
-          username: socket.username,
-        });
-      }
-    }
-    io.emit("users", updatedUsers); // Broadcast to all clients on disconnect
+    const updatedUsers = Array.from(io.of("/").sockets)
+      .map(([, s]) => ({
+        userID: s.id,
+        username: s.username,
+        unreadCount: (unreadMessages.get(s.id) || []).length,
+      }))
+      .filter((user) => user.username);
+    io.emit("users", updatedUsers);
   });
 });
 

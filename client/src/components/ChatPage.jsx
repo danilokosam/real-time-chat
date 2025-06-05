@@ -181,15 +181,44 @@ export const ChatPage = () => {
     // Handle typing status ✍️
     const handleTypingResponse = (data) => {
       console.log("Received typingResponse:", data);
-      setTypingStatus(data);
+      const currentUserName = localStorage.getItem("userName");
+      if (data.to) {
+        // Private chat
+        if (
+          selectedUser &&
+          data.to === socket.id &&
+          data.userName !== currentUserName &&
+          selectedUser.userID === (data.from || data.userName)
+        ) {
+          setTypingStatus(`${data.userName} is typing...`);
+        }
+      } else {
+        // Public chat
+        if (!selectedUser && data.userName !== currentUserName) {
+          setTypingStatus(`${data.userName} is typing...`);
+        }
+      }
     };
 
     // Handle stop typing status ✍️🛑
-    const handleStopTypingResponse = () => {
-      console.log("Received stopTypingResponse");
-      setTypingStatus("");
+    const handleStopTypingResponse = (data) => {
+      console.log("Received stopTypingResponse:", data);
+      if (data.to) {
+        // Private chat
+        if (
+          selectedUser &&
+          data.to === socket.id &&
+          selectedUser.userID === (data.from || data.userName)
+        ) {
+          setTypingStatus("");
+        }
+      } else {
+        // Public chat
+        if (!selectedUser) {
+          setTypingStatus("");
+        }
+      }
     };
-
     socket.on("messageResponse", handleMessageResponse); // Handle public messages
     socket.on("privateMessage", handlePrivateMessage); // Handle private messages
     socket.on("typingResponse", handleTypingResponse); // Handle typing status
@@ -225,9 +254,7 @@ export const ChatPage = () => {
       <div className="chat__main">
         <ChatBody
           messages={messages}
-          privateMessages={
-            selectedUser ? privateMessages[selectedUser.userID] || [] : []
-          }
+          privateMessages={privateMessages}
           selectedUser={selectedUser}
           typingStatus={typingStatus}
           lastMessageRef={lastMessageRef}

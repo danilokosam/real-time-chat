@@ -17,6 +17,11 @@ export const ChatBody = ({
     window.location.reload();
   };
 
+  // Determine messages to display
+  const messagesToDisplay = selectedUser
+    ? privateMessages[selectedUser.userID] || []
+    : messages;
+
   // Log private messages for debugging
   console.log("ChatBody rendering, privateMessages:", privateMessages);
   console.log("ChatBody rendering, selectedUser:", selectedUser);
@@ -26,15 +31,11 @@ export const ChatBody = ({
       ? privateMessages[selectedUser.userID] || []
       : "N/A (public chat)"
   );
-  console.log(
-    "Messages to render:",
-    selectedUser ? privateMessages[selectedUser?.userID] || [] : messages
-  );
+  console.log("Messages to render:", messagesToDisplay);
 
   return (
     <>
       <header className="chat__mainHeader">
-        {/* Show chat mode in header */}
         <p>
           {selectedUser
             ? `Private Chat with ${selectedUser.username}`
@@ -46,51 +47,36 @@ export const ChatBody = ({
       </header>
 
       <div className="message__container">
-        {selectedUser
-          ? // Render private messages for the selected user
-            privateMessages.map((message) => (
-              <div className="message__chats" key={message.id}>
-                <p className="sender__name">
-                  {message.fromSelf ? "You" : message.fromUsername}
-                </p>
-                <div
-                  className={
-                    message.fromSelf ? "message__sender" : "message__recipient"
-                  }
-                >
-                  <p>{message.content}</p>
-                  <p className="message__timestamp">{message.timestamp}</p>
-                </div>
-              </div>
-            ))
-          : // Render public messages
-            messages.map((message) => (
-              <div className="message__chats" key={message.id}>
-                <p className="sender__name">
-                  {message.userName === localStorage.getItem("userName")
-                    ? "You"
-                    : message.userName}
-                </p>
-                <div
-                  className={
-                    message.userName === localStorage.getItem("userName")
-                      ? "message__sender"
-                      : "message__recipient"
-                  }
-                >
-                  <p>{message.text}</p>
-                  <p className="message__timestamp">{message.timestamp}</p>
-                </div>
-              </div>
-            ))}
-
-        {/* Show typing status */}
-        {selectedUser && typingStatus && (
-          <div className="message__status">
-            <p>{typingStatus}</p>
+        {messagesToDisplay.map((message) => (
+          <div className="message__chats" key={message.id}>
+            <p className="sender__name">
+              {selectedUser
+                ? message.fromSelf
+                  ? "You"
+                  : message.fromUsername
+                : message.userName === localStorage.getItem("userName")
+                ? "You"
+                : message.userName}
+            </p>
+            <div
+              className={
+                selectedUser
+                  ? message.fromSelf
+                    ? "message__sender"
+                    : "message__recipient"
+                  : message.userName === localStorage.getItem("userName")
+                  ? "message__sender"
+                  : "message__recipient"
+              }
+            >
+              <p>{message.content || message.text}</p>
+              <p className="message__timestamp">{message.timestamp}</p>
+            </div>
           </div>
-        )}
-        {!selectedUser && typingStatus && (
+        ))}
+
+        {/* Show typing status only if relevant */}
+        {typingStatus && (
           <div className="message__status">
             <p>{typingStatus}</p>
           </div>

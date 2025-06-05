@@ -335,3 +335,16 @@
   color: #888;
   margin-top: 5px;
 }
+
+.unread-indicator {
+  display: inline-block;
+  margin-left: 5px;
+  background-color: red;
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  text-align: center;
+  line-height: 20px;
+  font-size: 12px;
+}
