@@ -97,6 +97,7 @@ export const ChatPage = () => {
     const handleDisconnect = (reason) => {
       console.log("Socket disconnected:", reason);
       setConnectionError("Disconnected from server. Trying to reconnect...");
+      socket.emit("updateConnectionStatus", { connected: false }); // Update the connection status to notify the server
     };
 
     const handleReconnect = (attempt) => {
@@ -106,12 +107,18 @@ export const ChatPage = () => {
       const userName = localStorage.getItem("userName"); // Retrieve username from localStorage 🫙
       if (userName) {
         socket.emit("newUser", { userName }); // Re-emit newUser event with username
+        socket.emit("updateConnectionStatus", { connected: true }); // Notify server
       }
     };
 
     socket.on("connect_error", handleConnectError); // Handle connection errors
     socket.on("disconnect", handleDisconnect); // Handle disconnections
     socket.on("reconnect", handleReconnect); // Handle reconnections
+
+    // Notify server of initial connection
+    if (socket.connected) {
+      socket.emit("updateConnectionStatus", { connected: true });
+    }
 
     return () => {
       socket.off("connect_error", handleConnectError); // Clean up connection error listener
