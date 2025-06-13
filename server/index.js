@@ -1,158 +1,173 @@
-// Import the Express module to create a web server
-import express from "express";
-// Import the HTTP module to create an HTTP server based on Express
-import { createServer } from "http";
-// Import the CORS module to allow cross-origin requests from other domains
-import cors from "cors";
-// Import the Socket.IO module to handle real-time communication using WebSockets
-import { Server } from "socket.io";
-// Import the v4 function from UUID to generate unique identifiers for messages
-import { v4 as uuidv4 } from "uuid";
+import express from "express"; // Express framework for creating the web server
+import { createServer } from "http"; // HTTP module to create an HTTP server
+import cors from "cors"; // CORS middleware to allow cross-origin requests
+import { Server } from "socket.io"; // Socket.IO for real-time communication
+import { v4 as uuidv4 } from "uuid"; // UUID generator for unique message IDs
+import connectDB from "./db.js"; // MongoDB connection setup
+import User from "./models/User.js"; // Mongoose model for User collection
+import Message from "./models/Message.js"; // Mongoose model for Message collection
 
-// Create an instance of the Express application
-const app = express();
-// Create an HTTP server that uses the Express application
-const httpServer = createServer(app);
-
-// Create a Socket.IO instance attached to the HTTP server with CORS configuration
+// Initialize Express app and HTTP server
+const app = express(); // Create an Express application
+const httpServer = createServer(app); // Create an HTTP server using Express
 const io = new Server(httpServer, {
-  // Configure CORS to allow connections from the client running on localhost:5173
+  // Configure Socket.IO with CORS to allow connections from the client
   cors: {
-    origin: "http://localhost:5173", // Allowed domain for client requests
+    origin: "http://localhost:5173", // Allow requests from the client running on port 5173
   },
 });
 
-// Define the port on which the server will listen, using the PORT environment variable or defaulting to 3001
-const PORT = process.env.PORT || 3001;
+// Define the port for the server to listen on
+const PORT = process.env.PORT || 3001; // Use environment variable PORT or default to 3001
 
-// Apply the CORS middleware to the Express app to allow cross-origin requests
-app.use(cors());
+// Connect to MongoDB
+connectDB(); // Initialize MongoDB connection using the connectDB function
 
-// Create a Map to store unread private messages, where the key is userID and the value is a list of messages
-const unreadMessages = new Map(); // Map: userID => [{ content, from, fromUsername, timestamp }]
+// Apply CORS middleware to Express app
+app.use(cors()); // Enable cross-origin requests for all routes
 
-// Create a Map to store the currently selected user for each socket, used for private chats
-const selectedUsers = new Map(); // Map: socketID => selectedUserID
+// In-memory Map to track selected users for private chats
+const selectedUsers = new Map(); // Map: socketID => selectedUserID, stores the user a client is privately chatting with
 
-// Create a Map to store the connection status for each socket, where the key is socket.id and the value is an object with the connected property
-const connectionStatus = new Map(); // socket.id => { connected: boolean }
+// Helper function to get the list of connected users from MongoDB
+const getConnectedUsers = async () => {
+  // Query the User collection for all users, selecting specific fields
+  const users = await User.find({}).select("userID username connected");
+  // Map users to the format expected by the client
+  return users.map((user) => ({
+    userID: user.userID, // Socket ID of the user
+    username: user.username, // User's chosen username
+    connected: user.connected, // Boolean indicating if the user is connected
+    unreadCount: 0, // Placeholder for unread message count (updated per client if needed)
+  }));
+};
 
-// Listen for the "connection" event from Socket.IO, triggered when a client connects to the server
+// Helper function to get unread private messages for a specific user
+const getUnreadMessages = async (userID) => {
+  // Query the Message collection for private messages addressed to the user
+  return await Message.find({
+    to: userID, // Messages where the user is the recipient
+    isPrivate: true, // Only private messages
+  }).lean(); // Return plain JavaScript objects for simplicity
+};
+
+// Handle Socket.IO connection events
 io.on("connection", (socket) => {
-  // Log to the console that a user has connected, displaying the socket ID
+  // Log when a new client connects
   console.log(`A user connected: ${socket.id}`);
 
-  // Initialize data for the new socket: set an empty list of unread messages
-  unreadMessages.set(socket.id, []);
-  // Initialize the selected user for this socket as null (no initial selection)
-  selectedUsers.set(socket.id, null);
-  // Set the initial connection status of the socket to connected (true)
-  connectionStatus.set(socket.id, { connected: true });
+  // Initialize selectedUsers Map for this socket
+  selectedUsers.set(socket.id, null); // Set default selected user to null
 
-  // Send the client any unread messages associated with their socket.id (initially an empty list)
-  socket.emit("unreadMessages", unreadMessages.get(socket.id) || []);
-
-  // Listen for the "newUser" event sent by the client when a user joins the chat
-  socket.on("newUser", (data) => {
-    // Extract the username from the received data object
-    const { userName } = data;
-    // Log to the console that the "newUser" event was received with the username
+  // Handle the "newUser" event when a client joins the chat
+  socket.on("newUser", async (data) => {
+    const { userName } = data; // Extract username from the client's data
     console.log(`newUser event received: ${userName}`);
-    // Check if a username was provided; if not, terminate execution
+    // Validate that a username was provided
     if (!userName) {
-      // Log to the console that no username was provided
       console.log("No username provided");
       return;
     }
 
-    // Check if a user with the same username already exists (excluding the current socket)
-    const existingUser = Array.from(io.of("/").sockets).some(
-      ([, s]) => s.username === userName && s.id !== socket.id
-    );
-    // If the username already exists, notify the client and terminate execution
+    // Check if the username is already taken by another user (excluding current socket)
+    const existingUser = await User.findOne({
+      username: userName,
+      userID: { $ne: socket.id }, // Exclude the current socket's ID
+    });
     if (existingUser) {
-      // Log to the console that the username is already in use
       console.log(`Username ${userName} already exists`);
-      // Emit a "usernameError" event to the client with an error message
+      // Notify the client of the username conflict
       socket.emit("usernameError", "Username already taken");
       return;
     }
 
-    // Assign the username to the socket to identify it
+    // Save or update the user in MongoDB
+    await User.findOneAndUpdate(
+      { userID: socket.id }, // Find user by socket ID
+      { username: userName, connected: true, createdAt: new Date() }, // Update or set user data
+      { upsert: true, new: true } // Create if not exists, return updated document
+    );
+
+    // Store username on the socket for easy access
     socket.username = userName;
-    // Log to the console that the user has joined the chat
     console.log(`${userName} has joined the chat!`);
 
-    // Create a list of connected users to send to all clients
-    const users = Array.from(io.of("/").sockets) // Get all connected sockets
-      .map(([, s]) => ({
-        // Map each socket to a user object
-        userID: s.id, // Socket ID as the user identifier
-        username: s.username, // Username of the socket
-        unreadCount: (unreadMessages.get(s.id) || []).length, // Number of unread messages
-        connected: connectionStatus.get(s.id)?.connected || false, // Connection status of the user
-      }))
-      .filter((user) => user.username); // Filter only users with a defined username
-    // Log to the console the user list that will be sent
-    console.log(`Sending users list: ${JSON.stringify(users)}`);
-    // Emit the "users" event to all clients with the updated list
-    io.emit("users", users); // Emit to all clients
+    // Send any unread private messages to the client
+    const unreadMessages = await getUnreadMessages(socket.id);
+    socket.emit("unreadMessages", unreadMessages);
+
+    // Send recent public messages to the client
+    const recentPublicMessages = await Message.find({ isPrivate: false }) // Fetch public messages
+      .sort({ _id: -1 }) // Sort by newest first
+      .limit(50) // Limit to the last 50 messages
+      .lean(); // Return plain JavaScript objects
+    recentPublicMessages.reverse(); // Reverse to send oldest first for correct display order
+    recentPublicMessages.forEach((message) => {
+      socket.emit("messageResponse", message); // Send each public message to the client
+    });
+
+    // Broadcast the updated user list to all clients
+    const users = await getConnectedUsers();
+    io.emit("users", users); // Emit to all connected clients
   });
 
-  // Listen for the "updateConnectionStatus" event sent by the client to update the connection status
-  socket.on("updateConnectionStatus", ({ connected }) => {
-    // Log to the console the connection status update for the socket
+  // Handle the "updateConnectionStatus" event to update a user's connection status
+  socket.on("updateConnectionStatus", async ({ connected }) => {
     console.log(`Connection status update for ${socket.id}: ${connected}`);
-    // Update the connection status in the connectionStatus Map
-    connectionStatus.set(socket.id, { connected });
-    // Create an updated list of connected users
-    const users = Array.from(io.of("/").sockets) // Get all connected sockets
-      .map(([, s]) => ({
-        // Map each socket to a user object
-        userID: s.id, // Socket ID
-        username: s.username, // Username
-        unreadCount: (unreadMessages.get(s.id) || []).length, // Number of unread messages
-        connected: connectionStatus.get(s.id)?.connected || false, // Updated connection status
-      }))
-      .filter((user) => user.username); // Filter only users with a username
-    // Emit the "users" event to all clients with the updated list
-    io.emit("users", users); // Emit to all clients
+    // Update the user's connected status in MongoDB
+    await User.findOneAndUpdate({ userID: socket.id }, { connected });
+    // Broadcast the updated user list to all clients
+    const users = await getConnectedUsers();
+    io.emit("users", users);
   });
 
-  // Listen for the "setSelectedUser" event sent by the client to set a selected user for a private chat
-  socket.on("setSelectedUser", (selectedUserID) => {
-    // Log to the console that the socket has selected a user for a private chat
+  // Handle the "setSelectedUser" event when a user selects another user for private chat
+  socket.on("setSelectedUser", async (selectedUserID) => {
     console.log(`User ${socket.id} selected user: ${selectedUserID}`);
-    // Update the selectedUsers Map with the ID of the selected user for this socket
-    selectedUsers.set(socket.id, selectedUserID);
-    // Create an updated list of connected users
-    const users = Array.from(io.of("/").sockets) // Get all connected sockets
-      .map(([, s]) => ({
-        // Map each socket to a user object
-        userID: s.id, // Socket ID
-        username: s.username, // Username
-        unreadCount: (unreadMessages.get(s.id) || []).length, // Number of unread messages
-        connected: connectionStatus.get(s.id)?.connected || false, // Connection status
-      }))
-      .filter((user) => user.username); // Filter only users with a username
-    // Emit the "users" event to all clients with the updated list
-    io.emit("users", users); // Emit to all clients
+    // Store the selected user ID in the in-memory Map
+    selectedUsers.set(socket.id, selectedUserID); // Update the selected user for this socket
+
+    // Fetch recent private messages between the current user and the selected user
+    const privateMessages = await Message.find({
+      isPrivate: true, // Only private messages
+      $or: [
+        { from: socket.id, to: selectedUserID }, // Messages sent by current user to selected user
+        { from: selectedUserID, to: socket.id }, // Messages sent by selected user to current user
+      ],
+    })
+      .sort({ _id: -1 }) // Sort by newest first
+      .limit(50) // Limit to the last 50 messages
+      .lean(); // Return plain JavaScript objects
+    privateMessages.reverse(); // Reverse to send oldest first for correct display order
+    privateMessages.forEach((message) => {
+      socket.emit("privateMessage", message); // Send each private message to the client
+    });
+
+    // Clear unread messages from the selected user
+    await Message.deleteMany({
+      to: socket.id, // Messages addressed to the current user
+      from: selectedUserID, // Messages from the selected user
+      isPrivate: true, // Only private messages
+    });
+    socket.emit("unreadMessages", await getUnreadMessages(socket.id)); // Update unread messages
+    // Broadcast the updated user list to all clients
+    const users = await getConnectedUsers();
+    io.emit("users", users);
   });
 
-  // Listen for the "privateMessage" event sent by the client to send a private message
-  socket.on("privateMessage", ({ content, to, fromUsername }) => {
-    // Log to the console the details of the received private message
+  // Handle the "privateMessage" event for sending private messages
+  socket.on("privateMessage", async ({ content, to, fromUsername }) => {
     console.log(
       `Private message from ${fromUsername} (socket: ${socket.id}) to ${to}: ${content}`
     );
-    // Check if the recipient socket exists
+    // Verify the recipient socket exists
     const recipientSocket = io.sockets.sockets.get(to);
-    // If the recipient doesn't exist, log an error and terminate execution
     if (!recipientSocket) {
       console.log(`Recipient socket ${to} not found`);
       return;
     }
-    // Create a message object with the details of the private message
+
+    // Create a message object for the private message
     const message = {
       id: uuidv4(), // Generate a unique ID for the message
       content, // Message content
@@ -160,158 +175,124 @@ io.on("connection", (socket) => {
       fromUsername, // Sender's username
       to, // Recipient's socket ID
       timestamp: new Date().toLocaleTimeString([], {
-        // Formatted timestamp
         hour: "2-digit",
         minute: "2-digit",
         hour12: true,
-      }), // Format: HH:MM AM/PM
+      }), // Formatted timestamp (e.g., "12:34 PM")
+      isPrivate: true, // Mark as a private message
     };
 
+    // Save the private message to MongoDB
+    await Message.create(message);
+
     // Check if the recipient is in a private chat with the sender
-    if (selectedUsers.get(to) !== socket.id) {
-      // If not in a private chat, add the message to the recipient's unread messages list
-      const recipientUnread = unreadMessages.get(to) || [];
-      recipientUnread.push(message);
-      unreadMessages.set(to, recipientUnread);
-      // Notify the recipient of the new unread messages
-      socket.to(to).emit("unreadMessages", recipientUnread);
+    const recipient = await User.findOne({ userID: to });
+    if (recipient && selectedUsers.get(to) !== socket.id) {
+      // If not in private chat, send unread messages to the recipient
+      socket.to(to).emit("unreadMessages", await getUnreadMessages(to));
     }
 
     // Send the private message to the recipient
     socket.to(to).emit("privateMessage", message);
-    // Send the message back to the sender to display in their chat
+    // Send the private message back to the sender for display
     socket.emit("privateMessage", message);
 
-    // Create an updated list of connected users with the unread message count
-    const users = Array.from(io.of("/").sockets) // Get all connected sockets
-      .map(([, s]) => ({
-        // Map each socket to a user object
-        userID: s.id, // Socket ID
-        username: s.username, // Username
-        unreadCount: (unreadMessages.get(s.id) || []).length, // Number of unread messages
-        connected: connectionStatus.get(s.id)?.connected || false, // Connection status
-      }))
-      .filter((user) => user.username); // Filter only users with a username
-    // Emit the "users" event to all clients with the updated list
-    io.emit("users", users); // Emit to all clients
+    // Broadcast the updated user list to all clients
+    const users = await getConnectedUsers();
+    io.emit("users", users);
   });
 
-  // Listen for the "clearUnreadMessages" event sent by the client to clear unread messages
-  socket.on("clearUnreadMessages", (targetUserID) => {
-    // Filter the unread messages for the current socket, removing messages from the target user
-    unreadMessages.set(
-      socket.id,
-      (unreadMessages.get(socket.id) || []).filter(
-        (msg) => msg.from !== targetUserID
-      )
-    );
+  // Handle the "clearUnreadMessages" event to clear unread private messages
+  socket.on("clearUnreadMessages", async (targetUserID) => {
+    // Delete private messages from the specified sender to the current user
+    await Message.deleteMany({
+      to: socket.id, // Messages addressed to the current user
+      from: targetUserID, // Messages from the specified sender
+      isPrivate: true, // Only private messages
+    });
     // Send the updated list of unread messages to the client
-    socket.emit("unreadMessages", unreadMessages.get(socket.id) || []);
-
-    // Create an updated list of connected users with the updated unread message count
-    const users = Array.from(io.of("/").sockets) // Get all connected sockets
-      .map(([, s]) => ({
-        // Map each socket to a user object
-        userID: s.id, // Socket ID
-        username: s.username, // Username
-        unreadCount: (unreadMessages.get(s.id) || []).length, // Updated number of unread messages
-        connected: connectionStatus.get(s.id)?.connected || false, // Connection status
-      }))
-      .filter((user) => user.username); // Filter only users with a username
-    // Emit the "users" event to all clients with the updated list
-    io.emit("users", users); // Emit to all clients
+    socket.emit("unreadMessages", await getUnreadMessages(socket.id));
+    // Broadcast the updated user list to all clients
+    const users = await getConnectedUsers();
+    io.emit("users", users);
   });
 
-  // Listen for the "typing" event sent by the client to notify that a user is typing
+  // Handle the "typing" event to notify when a user is typing
   socket.on("typing", (data) => {
-    // Log to the console that the "typing" event was received
     console.log("Received typing:", data);
-    // Check if the "typing" event is for a private chat (data.to exists)
     if (data.to) {
-      // Private chat: send the "typingResponse" event only to the recipient
+      // Private chat: notify only the recipient
       socket.to(data.to).emit("typingResponse", {
-        userName: data.userName, // Name of the user who is typing
+        userName: data.userName, // Name of the typing user
         to: data.to, // Recipient's socket ID
         from: socket.id, // Sender's socket ID
       });
     } else {
-      // Public chat: send the "typingResponse" event to all clients except the sender
+      // Public chat: notify all clients except the sender
       socket.broadcast.emit("typingResponse", {
-        userName: data.userName, // Name of the user who is typing
-        to: null, // Indicates a public chat
+        userName: data.userName, // Name of the typing user
+        to: null, // Indicates public chat
       });
     }
   });
 
-  // Listen for the "stopTyping" event sent by the client to notify that a user stopped typing
+  // Handle the "stopTyping" event to notify when a user stops typing
   socket.on("stopTyping", (data) => {
-    // Log to the console that the "stopTyping" event was received
     console.log("Received stopTyping", data);
-    // Check if the "stopTyping" event is for a private chat (data.to exists)
     if (data.to) {
-      // Private chat: send the "stopTypingResponse" event only to the recipient
+      // Private chat: notify only the recipient
       socket
         .to(data.to)
         .emit("stopTypingResponse", { to: data.to, from: socket.id });
     } else {
-      // Public chat: send the "stopTypingResponse" event to all clients except the sender
+      // Public chat: notify all clients except the sender
       socket.broadcast.emit("stopTypingResponse", { to: null });
     }
   });
 
-  // Listen for the "message" event sent by the client to send a public message
-  socket.on("message", (data) => {
-    // Log to the console that a public message was received
+  // Handle the "message" event for public messages
+  socket.on("message", async (data) => {
     console.log("Received message:", data);
-    // Create a message object for the public chat
+    // Create a message object for the public message
     const message = {
       id: uuidv4(), // Generate a unique ID for the message
-      text: data.text, // Message content
-      userName: data.userName, // Name of the user who sent the message
+      content: data.text, // Message content (renamed from text for consistency)
+      from: socket.id, // Sender's socket ID
+      fromUsername: data.userName, // Sender's username
+      to: null, // Null for public messages
       timestamp: new Date().toLocaleTimeString([], {
-        // Formatted timestamp
         hour: "2-digit",
         minute: "2-digit",
         hour12: true,
-      }), // Format: HH:MM AM/PM
+      }), // Formatted timestamp
+      isPrivate: false, // Mark as a public message
     };
-    // Emit the "messageResponse" event to all clients with the public message
+
+    // Save the public message to MongoDB
+    await Message.create(message);
+    // Broadcast the public message to all clients
     io.emit("messageResponse", message);
   });
 
-  // Listen for the "disconnect" event triggered when a client disconnects
-  socket.on("disconnect", () => {
-    // Log to the console that a user has disconnected
+  // Handle the "disconnect" event when a client disconnects
+  socket.on("disconnect", async () => {
     console.log(`User disconnected: ${socket.id}`);
-    // Update the connection status of the socket to disconnected (false)
-    connectionStatus.set(socket.id, { connected: false });
-    // Remove unread messages associated with the disconnected socket
-    unreadMessages.delete(socket.id);
-    // Remove the selected user associated with the disconnected socket
+    // Update the user's connection status in MongoDB
+    await User.findOneAndUpdate({ userID: socket.id }, { connected: false });
+    // Remove the socket from selectedUsers Map
     selectedUsers.delete(socket.id);
-    // Create an updated list of connected users
-    const updatedUsers = Array.from(io.of("/").sockets) // Get all connected sockets
-      .map(([, s]) => ({
-        // Map each socket to a user object
-        userID: s.id, // Socket ID
-        username: s.username, // Username
-        unreadCount: (unreadMessages.get(s.id) || []).length, // Number of unread messages
-        connected: connectionStatus.get(s.id)?.connected || false, // Updated connection status
-      }))
-      .filter((user) => user.username); // Filter only users with a username
-    // Emit the "users" event to all clients with the updated list
-    io.emit("users", updatedUsers); // Emit to all clients
+    // Broadcast the updated user list to all clients
+    const users = await getConnectedUsers();
+    io.emit("users", users);
   });
 });
 
-// Define a GET route at the "/api" path to test that the Express server is running
+// Define a simple API route to test the server
 app.get("/api", (_req, res) => {
-  // Respond with a JSON object containing a test message
-  res.json({ message: "Hello from the server!" });
+  res.json({ message: "Hello from the server!" }); // Respond with a JSON message
 });
 
-// Start the HTTP server and make it listen on the specified port
+// Start the HTTP server
 httpServer.listen(PORT, () => {
-  // Log to the console that the server is running and on which port
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Server is running on http://localhost:${PORT}`); // Log server startup
 });

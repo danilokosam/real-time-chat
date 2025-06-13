@@ -54,9 +54,9 @@ export const ChatBody = ({
                 ? message.fromSelf
                   ? "You"
                   : message.fromUsername
-                : message.userName === localStorage.getItem("userName")
+                : message.fromUsername === localStorage.getItem("userName")
                 ? "You"
-                : message.userName}
+                : message.fromUsername}
             </p>
             <div
               className={
@@ -64,12 +64,12 @@ export const ChatBody = ({
                   ? message.fromSelf
                     ? "message__sender"
                     : "message__recipient"
-                  : message.userName === localStorage.getItem("userName")
+                  : message.fromUsername === localStorage.getItem("userName")
                   ? "message__sender"
                   : "message__recipient"
               }
             >
-              <p>{message.content || message.text}</p>
+              <p>{message.content}</p>
               <p className="message__timestamp">{message.timestamp}</p>
             </div>
           </div>
