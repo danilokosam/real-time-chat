@@ -10,6 +10,8 @@ import { ChatPage } from "./components/ChatPage";
 //   reconnectionAttempts: 5,
 // });
 
+// Esto es socket IO
+
 export const App = () => {
   return (
     <BrowserRouter>
