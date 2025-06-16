@@ -2,12 +2,15 @@ import mongoose from "mongoose";
 
 const messageSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true }, // UUID
-  content: { type: String, required: true },
-  from: { type: String, ref: "User" }, // Sender's userID (socket ID)
+  content: { type: String, required: true }, // Message content
+  from: { type: String, required: true }, // Sender's persistent userID (UUID)
   fromUsername: { type: String }, // Sender's username
-  to: { type: String, ref: "User", default: null }, // Recipient's userID for private messages, null for public
-  timestamp: { type: String, required: true },
-  isPrivate: { type: Boolean, default: false },
+  to: { type: String, default: null }, // Recipient's persistent userID for private messages, null for public
+  timestamp: { type: String, required: true }, // Date and time of the message
+  isPrivate: { type: Boolean, default: false }, // Indicates if the message is private
 });
+
+// Index for faster message queries
+messageSchema.index({ isPrivate: 1, from: 1, to: 1, _id: -1 });
 
 export default mongoose.model("Message", messageSchema);

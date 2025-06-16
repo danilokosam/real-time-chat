@@ -1,144 +1,146 @@
 import { useEffect, useState, useRef } from "react";
-import { ChatBar } from "./ChatBar";
-import { ChatBody } from "./ChatBody";
-import { ChatFooter } from "./ChatFooter";
+import { ChatBar } from "./ChatBar"; // Displays the list of users for private/public chat selection
+import { ChatBody } from "./ChatBody"; // Displays public or private messages
+import { ChatFooter } from "./ChatFooter"; // Handles message input and sending
 import { io } from "socket.io-client";
 
-// Singleton socket instance
+// Singleton socket instance to maintain a single connection across the app
+// Prevents multiple socket connections if the component re-mounts
 let socketInstance = null;
 
+// Main ChatPage component, orchestrates the chat functionality
 export const ChatPage = () => {
-  // State for socket connection 🔌
+  // State to store the Socket.IO instance
   const [socket, setSocket] = useState(null);
-  // State for public messages 🌍
+  // State for public chat messages (array of messages for the public chat)
   const [messages, setMessages] = useState([]);
-  // State for private messages, stored as { [userID]: [{content, fromSelf, fromUsername}] } 🔐
+  // State for private messages, stored as an object with user IDs as keys
+  // Example: { userID1: [{ id, content, fromSelf, fromUsername, timestamp }, ...], ... }
   const [privateMessages, setPrivateMessages] = useState({});
-  // State for typing status (public only, for simplicity) 💬
+  // State to display typing status (e.g., "User is typing...")
   const [typingStatus, setTypingStatus] = useState("");
-  // State for connection errors ❌
+  // State for connection error messages (e.g., "Failed to connect to server")
   const [connectionError, setConnectionError] = useState(null);
-  // State for the currently selected user for private messaging ✅
-  const [selectedUser, setSelectedUser] = useState(null); // { userID, username }
-  const lastMessageRef = useRef(null); // Ref to scroll to the last message
-  const hasEmittedNewUser = useRef(false); // Ref to track if newUser has been emitted
+  // State for the currently selected user for private chat (null for public chat)
+  const [selectedUser, setSelectedUser] = useState(null);
+  // State for the current user's ID, assigned by the server
+  const [currentUserID, setCurrentUserID] = useState(null);
+  // State for the list of all users in the chat, received from the server
+  const [users, setUsers] = useState([]);
+  // Reference to the last message element for auto-scrolling to new messages
+  const lastMessageRef = useRef(null);
+  // Reference to track whether the "newUser" event has been emitted to avoid duplicates
+  const hasEmittedNewUser = useRef(false);
 
-  // Initialize socket 🔌
+  // Initialize socket and handle connection-related events
   useEffect(() => {
+    // Check if socketInstance is not already created to avoid multiple connections
     if (!socketInstance) {
+      // Create a new Socket.IO client instance, connecting to the server at localhost:3001
       socketInstance = io("http://localhost:3001", {
-        reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
+        reconnection: true, // Enable automatic reconnection
+        reconnectionAttempts: 5, // Try reconnecting 5 times
+        reconnectionDelay: 1000, // Wait 1 second between attempts
+        reconnectionDelayMax: 5000, // Max wait of 5 seconds
+        withCredentials: true, // Include credentials for CORS
+        transports: ["polling", "websocket"], // Use polling, then upgrade to WebSocket
       });
 
+      // Handle successful connection to the server
+      socketInstance.on("connect", () => {
+        console.log("Connected to server, socketID:", socketInstance.id);
+        // Clear any existing connection error
+        setConnectionError(null);
+        // Get the username from localStorage
+        const userName = localStorage.getItem("userName");
+        // Emit "newUser" event to register the user with the server, but only if not already emitted
+        if (userName && !hasEmittedNewUser.current) {
+          socketInstance.emit("newUser", { userName });
+          hasEmittedNewUser.current = true; // Mark as emitted to prevent duplicates
+        }
+      });
+
+      // Handle connection errors (e.g., server unreachable)
       socketInstance.on("connect_error", (error) => {
         console.error("Connection failed:", error.message);
+        // Display error message to the user
         setConnectionError("Failed to connect to server. Retrying...");
       });
 
-      socketInstance.on("connect", () => {
-        console.log("Connected to server");
+      // Handle disconnection from the server
+      socketInstance.on("disconnect", (reason) => {
+        console.log("Socket disconnected:", reason);
+        // Inform the user of disconnection
+        setConnectionError("Disconnected from server. Trying to reconnect...");
+      });
+
+      // Handle successful reconnection after a disconnect
+      socketInstance.on("reconnect", (attempt) => {
+        console.log("Socket reconnected after attempt:", attempt);
+        // Clear connection error
         setConnectionError(null);
+        // Allow re-emitting "newUser" on reconnect
+        hasEmittedNewUser.current = false;
+        const userName = localStorage.getItem("userName");
+        if (userName) {
+          socketInstance.emit("newUser", { userName });
+        }
+      });
+
+      // Handle server rejecting the username (e.g., duplicate username)
+      socketInstance.on("usernameError", (message) => {
+        console.error("Received usernameError:", message);
+        // Display the error to the user
+        setConnectionError(message);
+        // Store the error in localStorage for display on the home page
+        localStorage.setItem("usernameError", message);
+        // Redirect to home page after 3 seconds and clear username
+        setTimeout(() => {
+          localStorage.removeItem("userName");
+          window.location.href = "/";
+        }, 3000);
       });
     }
 
+    // Set the socket state to the singleton instance
     setSocket(socketInstance);
 
+    // Cleanup function (runs when component unmounts)
     return () => {
-      if (socketInstance) {
-        socketInstance.disconnect();
-        console.log("Socket disconnected on ChatPage unmount");
-        socketInstance = null;
-      }
+      // Log unmounting but keep the socket alive (singleton pattern)
+      console.log("ChatPage unmounting, keeping socket alive");
     };
-  }, []);
-  // Initialize socket 🔌
+  }, []); // Empty dependency array ensures this runs only once on mount
 
-  // Emit newUser after socket connects 🛜
+  // Handle Socket.IO events for messages, users, and typing indicators
   useEffect(() => {
+    // Skip if socket is not initialized
     if (!socket) return;
 
-    const handleConnect = () => {
-      const userName = localStorage.getItem("userName"); // Retrieve username from localStorage 🫙
-      // Check if newUser has already been emitted
-      if (userName && !hasEmittedNewUser.current) {
-        console.log(`Emitting newUser for ${userName}, socketID: ${socket.id}`);
-        socket.emit("newUser", { userName }); // Emit newUser event with username
-        hasEmittedNewUser.current = true; // Set flag to true to prevent re-emitting
-        setConnectionError(null); // Clear any previous connection errors
+    // Handle updated user list from the server
+    const handleUsers = (data) => {
+      console.log("Received users list:", data);
+      const userName = localStorage.getItem("userName");
+      // Find the current user in the received user list
+      const currentUser = data.find((user) => user.username === userName);
+      if (currentUser) {
+        // Set the current user's ID for identifying messages
+        setCurrentUserID(currentUser.userID);
+        // Store userID on the socket for easy access
+        socket.userID = currentUser.userID;
       }
+      // Update the users state with the full list
+      setUsers(data);
     };
 
-    // Check if socket is already connected
-    if (socket.connected) {
-      handleConnect(); // Call handleConnect immediately if already connected
-    } else {
-      socket.on("connect", handleConnect); // Listen for connect event
-    }
-
-    return () => {
-      socket.off("connect", handleConnect); // Clean up the event listener on unmount
-    };
-  }, [socket]);
-  // Emit newUser after socket connects 🛜
-
-  // Handle socket errors and connection events 🎟️
-  useEffect(() => {
-    if (!socket) return;
-
-    // Handle socket connection errors and disconnections
-    const handleConnectError = (error) => {
-      console.error("Socket connection error:", error.message);
-      setConnectionError("Connection lost. Please refresh the page.");
-    };
-
-    const handleDisconnect = (reason) => {
-      console.log("Socket disconnected:", reason);
-      setConnectionError("Disconnected from server. Trying to reconnect...");
-      socket.emit("updateConnectionStatus", { connected: false }); // Update the connection status to notify the server
-    };
-
-    const handleReconnect = (attempt) => {
-      console.log("Socket reconnected after attempt:", attempt);
-      setConnectionError(null); // Clear connection error on successful reconnection
-      hasEmittedNewUser.current = false; // Reset flag to allow re-emitting newUser
-      const userName = localStorage.getItem("userName"); // Retrieve username from localStorage 🫙
-      if (userName) {
-        socket.emit("newUser", { userName }); // Re-emit newUser event with username
-        socket.emit("updateConnectionStatus", { connected: true }); // Notify server
-      }
-    };
-
-    socket.on("connect_error", handleConnectError); // Handle connection errors
-    socket.on("disconnect", handleDisconnect); // Handle disconnections
-    socket.on("reconnect", handleReconnect); // Handle reconnections
-
-    // Notify server of initial connection
-    if (socket.connected) {
-      socket.emit("updateConnectionStatus", { connected: true });
-    }
-
-    return () => {
-      socket.off("connect_error", handleConnectError); // Clean up connection error listener
-      socket.off("disconnect", handleDisconnect); // Clean up disconnect listener
-      socket.off("reconnect", handleReconnect); // Clean up reconnection listener
-    };
-  }, [socket]);
-  // Handle socket errors and connection events 🎟️
-
-  // Handle socket events for public and private messages 🤖
-  useEffect(() => {
-    if (!socket) return;
-
-    // Handle public messages 🌍
+    // Handle public chat messages
     const handleMessageResponse = (data) => {
       console.log("Received messageResponse:", data);
-      setMessages((prevMessages) => [...prevMessages, data]); // Add new message to the list
+      // Append new public message to the messages state
+      setMessages((prevMessages) => [...prevMessages, data]);
     };
 
-    // Handle private messages 🔏
+    // Handle private messages
     const handlePrivateMessage = ({
       id,
       content,
@@ -155,28 +157,34 @@ export const ChatPage = () => {
         to,
         timestamp,
       });
-      console.log("Current socket ID", socket.id);
-      console.log("Current selectedUser", selectedUser);
-      if (!socket.id) {
-        console.warn(
-          "Socket ID is not available. Cannot handle private message."
-        );
+      // Ensure currentUserID is available to determine message direction
+      if (!currentUserID) {
+        console.warn("Current userID not available.");
         return;
       }
-      const otherUserID = to === socket.id ? from : to; // Determine the other user in the conversation
-      const fromSelf = from === socket.id; // Check if the message is from the current user
+      // Determine the other user's ID (sender if received, recipient if sent)
+      const otherUserID = to === currentUserID ? from : to;
+      // Mark if the message is from the current user
+      const fromSelf = from === currentUserID;
 
       if (!otherUserID) {
-        console.warn(
-          "Other user ID is not available. Cannot handle private message."
-        );
+        console.warn("Other user ID not available.");
         return;
       }
+
+      // Update privateMessages state, preventing duplicates
       setPrivateMessages((prev) => {
+        const userMessages = prev[otherUserID] || [];
+        // Check if a message with the same ID already exists
+        if (userMessages.some((msg) => msg.id === id)) {
+          console.log("Duplicate message ignored:", id);
+          return prev; // Skip adding duplicate
+        }
+        // Add the new message to the user's message array
         const updatedMessages = {
           ...prev,
           [otherUserID]: [
-            ...(prev[otherUserID] || []),
+            ...userMessages,
             { id, content, fromSelf, fromUsername, timestamp },
           ],
         };
@@ -185,80 +193,94 @@ export const ChatPage = () => {
       });
     };
 
-    // Handle typing status ✍️
+    // Handle typing indicator for private or public chat
     const handleTypingResponse = (data) => {
       console.log("Received typingResponse:", data);
       const currentUserName = localStorage.getItem("userName");
+      // Private chat typing indicator
       if (data.to) {
-        // Private chat
         if (
-          selectedUser &&
-          data.to === socket.id &&
-          data.userName !== currentUserName &&
-          selectedUser.userID === (data.from || data.userName)
+          selectedUser && // Ensure a user is selected for private chat
+          data.to === currentUserID && // Message is directed to current user
+          data.userName !== currentUserName && // Not the current user's typing
+          selectedUser.userID === data.from // Matches the selected user
         ) {
           setTypingStatus(`${data.userName} is typing...`);
         }
       } else {
-        // Public chat
+        // Public chat typing indicator
         if (!selectedUser && data.userName !== currentUserName) {
           setTypingStatus(`${data.userName} is typing...`);
         }
       }
     };
 
-    // Handle stop typing status ✍️🛑
+    // Handle stopping typing indicator
     const handleStopTypingResponse = (data) => {
       console.log("Received stopTypingResponse:", data);
+      // Clear typing status for private chat
       if (data.to) {
-        // Private chat
         if (
           selectedUser &&
-          data.to === socket.id &&
-          selectedUser.userID === (data.from || data.userName)
+          data.to === currentUserID &&
+          selectedUser.userID === data.from
         ) {
           setTypingStatus("");
         }
       } else {
-        // Public chat
+        // Clear typing status for public chat
         if (!selectedUser) {
           setTypingStatus("");
         }
       }
     };
-    socket.on("messageResponse", handleMessageResponse); // Handle public messages
-    socket.on("privateMessage", handlePrivateMessage); // Handle private messages
-    socket.on("typingResponse", handleTypingResponse); // Handle typing status
-    socket.on("stopTypingResponse", handleStopTypingResponse); // Handle stop typing status
 
+    // Register Socket.IO event listeners
+    socket.on("users", handleUsers);
+    socket.on("messageResponse", handleMessageResponse);
+    socket.on("privateMessage", handlePrivateMessage);
+    socket.on("typingResponse", handleTypingResponse);
+    socket.on("stopTypingResponse", handleStopTypingResponse);
+
+    // Cleanup function to remove listeners when dependencies change or component unmounts
     return () => {
-      socket.off("messageResponse", handleMessageResponse); // Clean up public message listener
-      socket.off("privateMessage", handlePrivateMessage); // Clean up private message listener
-      socket.off("typingResponse", handleTypingResponse); // Clean up typing status listener
-      socket.off("stopTypingResponse", handleStopTypingResponse); // Clean up stop typing status listener
+      socket.off("users", handleUsers);
+      socket.off("messageResponse", handleMessageResponse);
+      socket.off("privateMessage", handlePrivateMessage);
+      socket.off("typingResponse", handleTypingResponse);
+      socket.off("stopTypingResponse", handleStopTypingResponse);
     };
-  }, [socket, selectedUser]);
-  // Handle socket events for public and private messages 🤖
+  }, [socket, currentUserID, selectedUser]); // Dependencies ensure listeners are updated when these change
 
-  // Auto-scroll to the latest message
+  // Auto-scroll to the latest message when messages or privateMessages change
   useEffect(() => {
     console.log("Messages state updated:", messages);
     console.log("Private messages state updated:", privateMessages);
-    lastMessageRef.current?.scrollIntoView({ behavior: "smooth" }); // Scroll to the last message
+    // Scroll to the last message element smoothly
+    lastMessageRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, privateMessages]);
 
-  // Prevent rendering until socket is initialized
-  if (!socket) {
-    return <div>Loading...</div>;
+  // Render a loading/error message if socket is not connected
+  if (!socket || !socket.connected) {
+    return <div>{connectionError || "Connecting to chat..."}</div>;
   }
 
+  // Render the main chat UI
   return (
     <div className="chat">
+      {/* Display connection error if present */}
       {connectionError && (
         <div className="connection-error">{connectionError}</div>
       )}
-      <ChatBar socket={socket} setSelectedUser={setSelectedUser} />
+      {/* ChatBar: Displays user list and handles user selection for private chat */}
+      <ChatBar
+        socket={socket}
+        setSelectedUser={setSelectedUser}
+        currentUserID={currentUserID}
+        users={users}
+      />
       <div className="chat__main">
+        {/* ChatBody: Displays public or private messages based on selectedUser */}
         <ChatBody
           messages={messages}
           privateMessages={privateMessages}
@@ -266,7 +288,12 @@ export const ChatPage = () => {
           typingStatus={typingStatus}
           lastMessageRef={lastMessageRef}
         />
-        <ChatFooter socket={socket} selectedUser={selectedUser} />
+        {/* ChatFooter: Handles message input and sending */}
+        <ChatFooter
+          socket={socket}
+          selectedUser={selectedUser}
+          currentUserID={currentUserID}
+        />
       </div>
     </div>
   );

@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema({
-  userID: { type: String, required: true, unique: true }, // Socket ID
+  userID: { type: String, required: true, unique: true }, // Persistent UUID for user identity
+  socketID: { type: String, unique: true, sparse: true }, // Current socket ID for real-time messaging
   username: { type: String, required: true, unique: true },
   connected: { type: Boolean, default: false },
+  sessionToken: { type: String, unique: true, sparse: true }, // Session token for cookie-based persistence
   createdAt: { type: Date, default: Date.now },
 });
 

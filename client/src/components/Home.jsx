@@ -6,11 +6,11 @@ export const Home = () => {
   const [userName, setUserName] = useState("");
   const [error, setError] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
-    // Validation rules
+    // Client-side validation
     if (!userName.trim()) {
       setError("Username cannot be empty.");
       return;
@@ -28,8 +28,40 @@ export const Home = () => {
       return;
     }
 
-    localStorage.setItem("userName", userName);
-    navigate("/chat");
+    try {
+      const response = await fetch("http://localhost:3001/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userName }),
+        credentials: "include", // Send cookies with request
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "Login failed");
+        return;
+      }
+
+      console.log("Login succesful, checking cookies...");
+      console.log("Cookies;", document.cookie); // Note: httpOnly cookies won't appear here
+      // Test cookie receipt
+      const testResponse = await fetch(
+        "http://localhost:3001/api/test-cookie",
+        {
+          credentials: "include",
+        }
+      );
+      const testData = await testResponse.json();
+      console.log("Test cookie response:", testData);
+
+      localStorage.setItem("userName", userName);
+      navigate("/chat");
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("Failed to connect to server. Please try again.");
+    }
   };
 
   return (

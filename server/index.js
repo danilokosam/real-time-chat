@@ -1,298 +1,401 @@
-import express from "express"; // Express framework for creating the web server
-import { createServer } from "http"; // HTTP module to create an HTTP server
-import cors from "cors"; // CORS middleware to allow cross-origin requests
-import { Server } from "socket.io"; // Socket.IO for real-time communication
-import { v4 as uuidv4 } from "uuid"; // UUID generator for unique message IDs
-import connectDB from "./db.js"; // MongoDB connection setup
-import User from "./models/User.js"; // Mongoose model for User collection
-import Message from "./models/Message.js"; // Mongoose model for Message collection
+// Import required modules
+import express from "express";
+import { createServer } from "http";
+import cors from "cors";
+import cookieParser from "cookie-parser";
+import { Server } from "socket.io";
+import { v4 as uuidv4 } from "uuid";
+import cookie from "cookie"; // Added for parsing cookies
+import connectDB from "./db.js";
+import User from "./models/User.js";
+import Message from "./models/Message.js";
 
 // Initialize Express app and HTTP server
-const app = express(); // Create an Express application
-const httpServer = createServer(app); // Create an HTTP server using Express
+const app = express();
+const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  // Configure Socket.IO with CORS to allow connections from the client
   cors: {
-    origin: "http://localhost:5173", // Allow requests from the client running on port 5173
+    origin: "http://localhost:5173",
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Cookie"],
+    methods: ["GET", "POST"],
   },
+  transports: ["polling", "websocket"],
 });
 
-// Define the port for the server to listen on
-const PORT = process.env.PORT || 3001; // Use environment variable PORT or default to 3001
+// Socket.IO middleware to parse and log cookies
+io.use((socket, next) => {
+  const rawCookies = socket.request.headers.cookie || "none";
+  console.log(`Socket.IO incoming cookies: ${rawCookies}`);
+  if (rawCookies !== "none") {
+    const parsedCookies = cookie.parse(rawCookies);
+    socket.request.cookies = parsedCookies; // Attach parsed cookies
+    console.log(`Parsed cookies for socket: ${JSON.stringify(parsedCookies)}`);
+  } else {
+    socket.request.cookies = {};
+  }
+  next();
+});
 
-// Connect to MongoDB
-connectDB(); // Initialize MongoDB connection using the connectDB function
+// Define the port
+const PORT = process.env.PORT || 3001;
 
-// Apply CORS middleware to Express app
-app.use(cors()); // Enable cross-origin requests for all routes
+// Connect to MongoDB and reset connected status
+connectDB().then(async () => {
+  await User.updateMany({}, { $set: { connected: false, socketID: null } });
+  console.log(
+    "Reset all users' connected status and socketID to false on startup"
+  );
+});
+
+// Apply middleware
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Cookie"],
+    methods: ["GET", "POST"],
+  })
+);
+app.use(cookieParser());
+app.use(express.json());
 
 // In-memory Map to track selected users for private chats
-const selectedUsers = new Map(); // Map: socketID => selectedUserID, stores the user a client is privately chatting with
+const selectedUsers = new Map();
 
-// Helper function to get the list of connected users from MongoDB
+// Helper function to get connected users
 const getConnectedUsers = async () => {
-  // Query the User collection for all users, selecting specific fields
   const users = await User.find({}).select("userID username connected");
-  // Map users to the format expected by the client
   return users.map((user) => ({
-    userID: user.userID, // Socket ID of the user
-    username: user.username, // User's chosen username
-    connected: user.connected, // Boolean indicating if the user is connected
-    unreadCount: 0, // Placeholder for unread message count (updated per client if needed)
+    userID: user.userID,
+    username: user.username,
+    connected: user.connected,
+    unreadCount: 0,
   }));
 };
 
-// Helper function to get unread private messages for a specific user
+// Helper function to get unread private messages
 const getUnreadMessages = async (userID) => {
-  // Query the Message collection for private messages addressed to the user
   return await Message.find({
-    to: userID, // Messages where the user is the recipient
-    isPrivate: true, // Only private messages
-  }).lean(); // Return plain JavaScript objects for simplicity
+    to: userID,
+    isPrivate: true,
+  }).lean();
 };
+
+// New POST /api/login endpoint
+app.post("/api/login", async (req, res) => {
+  const { userName } = req.body;
+  console.log(`POST /api/login received for username: ${userName}`);
+  if (!userName) {
+    console.log("Username is required");
+    return res.status(400).json({ error: "Username is required" });
+  }
+
+  // Validate username
+  if (
+    userName.length < 3 ||
+    userName.length > 20 ||
+    !/^[a-zA-Z0-9 ]+$/.test(userName)
+  ) {
+    console.log("Invalid username");
+    return res.status(400).json({ error: "Invalid username" });
+  }
+
+  // Check if username is taken
+  const existingUser = await User.findOne({ username: userName });
+  if (existingUser) {
+    console.log(`Username ${userName} already taken`);
+    return res.status(409).json({ error: "Username already taken" });
+  }
+
+  // Generate new userID and sessionToken
+  const newUserID = uuidv4();
+  const newSessionToken = uuidv4();
+  console.log(
+    `Generated userID: ${newUserID}, sessionToken: ${newSessionToken}`
+  );
+
+  // Create new user
+  await User.create({
+    userID: newUserID,
+    socketID: null,
+    username: userName,
+    connected: false,
+    sessionToken: newSessionToken,
+    createdAt: new Date(),
+  });
+
+  // Set session cookie
+  res.cookie("sessionToken", newSessionToken, {
+    httpOnly: true,
+    secure: false,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+  console.log(`Set sessionToken cookie: ${newSessionToken}`);
+
+  res.status(200).json({ message: "Login successful" });
+});
+
+// Test endpoint to verify cookie receipt
+app.get("/api/test-cookie", (req, res) => {
+  const sessionToken = req.cookies?.sessionToken || "none";
+  console.log(`GET /api/test-cookie received, sessionToken: ${sessionToken}`);
+  res.json({ sessionToken });
+});
 
 // Handle Socket.IO connection events
 io.on("connection", (socket) => {
-  // Log when a new client connects
   console.log(`A user connected: ${socket.id}`);
+  selectedUsers.set(socket.id, null);
 
-  // Initialize selectedUsers Map for this socket
-  selectedUsers.set(socket.id, null); // Set default selected user to null
+  // Log connection errors
+  socket.on("error", (err) => {
+    console.error(`Socket ${socket.id} error: ${err.message}`);
+  });
 
-  // Handle the "newUser" event when a client joins the chat
   socket.on("newUser", async (data) => {
-    const { userName } = data; // Extract username from the client's data
+    const { userName } = data;
     console.log(`newUser event received: ${userName}`);
-    // Validate that a username was provided
     if (!userName) {
       console.log("No username provided");
+      socket.emit("usernameError", "No username provided");
       return;
     }
 
-    // Check if the username is already taken by another user (excluding current socket)
-    const existingUser = await User.findOne({
-      username: userName,
-      userID: { $ne: socket.id }, // Exclude the current socket's ID
-    });
-    if (existingUser) {
-      console.log(`Username ${userName} already exists`);
-      // Notify the client of the username conflict
-      socket.emit("usernameError", "Username already taken");
+    // Get session token from parsed cookies
+    const sessionToken = socket.request.cookies?.sessionToken || "none";
+    console.log(`Session token from socket: ${sessionToken}`);
+    let user;
+
+    if (sessionToken !== "none") {
+      user = await User.findOne({ sessionToken });
+      console.log(
+        `User lookup for sessionToken: ${user ? "found" : "not found"}`
+      );
+      if (user) {
+        if (user.username !== userName) {
+          console.log(
+            `Username ${userName} does not match session token's username ${user.username}`
+          );
+          socket.emit("usernameError", "Username does not match session");
+          return;
+        }
+        // Update user with new socketID and connected status
+        await User.updateOne(
+          { sessionToken },
+          { socketID: socket.id, connected: true }
+        );
+        console.log(
+          `Reconnected user ${userName} with session token ${sessionToken}`
+        );
+      }
+    }
+
+    if (!user) {
+      console.log("Invalid session. Emitting usernameError.");
+      socket.emit("usernameError", "Invalid session. Please sign in again.");
       return;
     }
 
-    // Save or update the user in MongoDB
-    await User.findOneAndUpdate(
-      { userID: socket.id }, // Find user by socket ID
-      { username: userName, connected: true, createdAt: new Date() }, // Update or set user data
-      { upsert: true, new: true } // Create if not exists, return updated document
-    );
-
-    // Store username on the socket for easy access
     socket.username = userName;
+    socket.userID = user.userID;
     console.log(`${userName} has joined the chat!`);
 
-    // Send any unread private messages to the client
-    const unreadMessages = await getUnreadMessages(socket.id);
+    const unreadMessages = await getUnreadMessages(user.userID);
     socket.emit("unreadMessages", unreadMessages);
 
-    // Send recent public messages to the client
-    const recentPublicMessages = await Message.find({ isPrivate: false }) // Fetch public messages
-      .sort({ _id: -1 }) // Sort by newest first
-      .limit(50) // Limit to the last 50 messages
-      .lean(); // Return plain JavaScript objects
-    recentPublicMessages.reverse(); // Reverse to send oldest first for correct display order
-    recentPublicMessages.forEach((message) => {
-      socket.emit("messageResponse", message); // Send each public message to the client
+    const recentPublicMessages = await Message.find({ isPrivate: false })
+      .sort({ _id: -1 })
+      .limit(50)
+      .lean();
+    recentPublicMessages.reverse().forEach((message) => {
+      socket.emit("messageResponse", message);
     });
 
-    // Broadcast the updated user list to all clients
     const users = await getConnectedUsers();
-    io.emit("users", users); // Emit to all connected clients
+    console.log(
+      `Emitting users list to socket ${socket.id}: ${JSON.stringify(users)}`
+    );
+    io.emit("users", users);
   });
 
-  // Handle the "updateConnectionStatus" event to update a user's connection status
   socket.on("updateConnectionStatus", async ({ connected }) => {
     console.log(`Connection status update for ${socket.id}: ${connected}`);
-    // Update the user's connected status in MongoDB
-    await User.findOneAndUpdate({ userID: socket.id }, { connected });
-    // Broadcast the updated user list to all clients
+    await User.findOneAndUpdate({ socketID: socket.id }, { connected });
     const users = await getConnectedUsers();
     io.emit("users", users);
   });
 
-  // Handle the "setSelectedUser" event when a user selects another user for private chat
   socket.on("setSelectedUser", async (selectedUserID) => {
     console.log(`User ${socket.id} selected user: ${selectedUserID}`);
-    // Store the selected user ID in the in-memory Map
-    selectedUsers.set(socket.id, selectedUserID); // Update the selected user for this socket
+    selectedUsers.set(socket.id, selectedUserID);
 
-    // Fetch recent private messages between the current user and the selected user
     const privateMessages = await Message.find({
-      isPrivate: true, // Only private messages
+      isPrivate: true,
       $or: [
-        { from: socket.id, to: selectedUserID }, // Messages sent by current user to selected user
-        { from: selectedUserID, to: socket.id }, // Messages sent by selected user to current user
+        { from: socket.userID, to: selectedUserID },
+        { from: selectedUserID, to: socket.userID },
       ],
     })
-      .sort({ _id: -1 }) // Sort by newest first
-      .limit(50) // Limit to the last 50 messages
-      .lean(); // Return plain JavaScript objects
-    privateMessages.reverse(); // Reverse to send oldest first for correct display order
-    privateMessages.forEach((message) => {
-      socket.emit("privateMessage", message); // Send each private message to the client
+      .sort({ _id: -1 })
+      .limit(50)
+      .lean();
+    privateMessages.reverse().forEach((message) => {
+      socket.emit("privateMessage", message);
     });
 
-    // Clear unread messages from the selected user
     await Message.deleteMany({
-      to: socket.id, // Messages addressed to the current user
-      from: selectedUserID, // Messages from the selected user
-      isPrivate: true, // Only private messages
+      to: socket.userID,
+      from: selectedUserID,
+      isPrivate: true,
     });
-    socket.emit("unreadMessages", await getUnreadMessages(socket.id)); // Update unread messages
-    // Broadcast the updated user list to all clients
+    socket.emit("unreadMessages", await getUnreadMessages(socket.userID));
+
     const users = await getConnectedUsers();
+    console.log(
+      `Emitting users list after setSelectedUser: ${JSON.stringify(users)}`
+    );
     io.emit("users", users);
   });
 
-  // Handle the "privateMessage" event for sending private messages
   socket.on("privateMessage", async ({ content, to, fromUsername }) => {
     console.log(
       `Private message from ${fromUsername} (socket: ${socket.id}) to ${to}: ${content}`
     );
-    // Verify the recipient socket exists
-    const recipientSocket = io.sockets.sockets.get(to);
-    if (!recipientSocket) {
-      console.log(`Recipient socket ${to} not found`);
+    const recipient = await User.findOne({ userID: to }).select("socketID");
+    if (!recipient || !recipient.socketID) {
+      console.log(`Recipient userID ${to} not found or not connected`);
       return;
     }
 
-    // Create a message object for the private message
     const message = {
-      id: uuidv4(), // Generate a unique ID for the message
-      content, // Message content
-      from: socket.id, // Sender's socket ID
-      fromUsername, // Sender's username
-      to, // Recipient's socket ID
+      id: uuidv4(),
+      content,
+      from: socket.userID,
+      fromUsername,
+      to,
       timestamp: new Date().toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
         hour12: true,
-      }), // Formatted timestamp (e.g., "12:34 PM")
-      isPrivate: true, // Mark as a private message
+      }),
+      isPrivate: true,
     };
 
-    // Save the private message to MongoDB
     await Message.create(message);
 
-    // Check if the recipient is in a private chat with the sender
-    const recipient = await User.findOne({ userID: to });
-    if (recipient && selectedUsers.get(to) !== socket.id) {
-      // If not in private chat, send unread messages to the recipient
-      socket.to(to).emit("unreadMessages", await getUnreadMessages(to));
+
+    if (selectedUsers.get(recipient.socketID) !== socket.userID) {
+      socket
+        .to(recipient.socketID)
+        .emit("unreadMessages", await getUnreadMessages(to));
     }
 
-    // Send the private message to the recipient
-    socket.to(to).emit("privateMessage", message);
-    // Send the private message back to the sender for display
+    socket.to(recipient.socketID).emit("privateMessage", message);
+    
     socket.emit("privateMessage", message);
 
-    // Broadcast the updated user list to all clients
     const users = await getConnectedUsers();
+    console.log(
+      `Emitting users list after private message: ${JSON.stringify(users)}`
+    );
     io.emit("users", users);
   });
 
-  // Handle the "clearUnreadMessages" event to clear unread private messages
   socket.on("clearUnreadMessages", async (targetUserID) => {
-    // Delete private messages from the specified sender to the current user
     await Message.deleteMany({
-      to: socket.id, // Messages addressed to the current user
-      from: targetUserID, // Messages from the specified sender
-      isPrivate: true, // Only private messages
+      to: socket.userID,
+      from: targetUserID,
+      isPrivate: true,
     });
-    // Send the updated list of unread messages to the client
-    socket.emit("unreadMessages", await getUnreadMessages(socket.id));
-    // Broadcast the updated user list to all clients
+    socket.emit("unreadMessages", await getUnreadMessages(socket.userID));
     const users = await getConnectedUsers();
     io.emit("users", users);
   });
 
-  // Handle the "typing" event to notify when a user is typing
-  socket.on("typing", (data) => {
+  socket.on("typing", async (data) => {
     console.log("Received typing:", data);
     if (data.to) {
-      // Private chat: notify only the recipient
-      socket.to(data.to).emit("typingResponse", {
-        userName: data.userName, // Name of the typing user
-        to: data.to, // Recipient's socket ID
-        from: socket.id, // Sender's socket ID
-      });
+      const recipient = await User.findOne({ userID: data.to }).select(
+        "socketID"
+      );
+      if (recipient && recipient.socketID) {
+        socket.to(recipient.socketID).emit("typingResponse", {
+          userName: data.userName,
+          to: data.to,
+          from: socket.userID,
+        });
+      }
     } else {
-      // Public chat: notify all clients except the sender
       socket.broadcast.emit("typingResponse", {
-        userName: data.userName, // Name of the typing user
-        to: null, // Indicates public chat
+        userName: data.userName,
+        to: null,
       });
     }
   });
 
-  // Handle the "stopTyping" event to notify when a user stops typing
-  socket.on("stopTyping", (data) => {
+  socket.on("stopTyping", async (data) => {
     console.log("Received stopTyping", data);
     if (data.to) {
-      // Private chat: notify only the recipient
-      socket
-        .to(data.to)
-        .emit("stopTypingResponse", { to: data.to, from: socket.id });
+      const recipient = await User.findOne({ userID: data.to }).select(
+        "socketID"
+      );
+      if (recipient && recipient.socketID) {
+        socket.to(recipient.socketID).emit("stopTypingResponse", {
+          to: data.to,
+          from: socket.userID,
+        });
+      }
     } else {
-      // Public chat: notify all clients except the sender
       socket.broadcast.emit("stopTypingResponse", { to: null });
     }
   });
 
-  // Handle the "message" event for public messages
   socket.on("message", async (data) => {
     console.log("Received message:", data);
-    // Create a message object for the public message
+    if (!socket.userID) {
+      console.log("No userID set for socket. Rejecting message.");
+      socket.emit("error", "Invalid session. Please sign in again.");
+      return;
+    }
     const message = {
-      id: uuidv4(), // Generate a unique ID for the message
-      content: data.text, // Message content (renamed from text for consistency)
-      from: socket.id, // Sender's socket ID
-      fromUsername: data.userName, // Sender's username
-      to: null, // Null for public messages
+      id: uuidv4(),
+      content: data.text,
+      from: socket.userID,
+      fromUsername: data.userName,
+      to: null,
       timestamp: new Date().toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
         hour12: true,
-      }), // Formatted timestamp
-      isPrivate: false, // Mark as a public message
+      }),
+      isPrivate: false,
     };
 
-    // Save the public message to MongoDB
     await Message.create(message);
-    // Broadcast the public message to all clients
     io.emit("messageResponse", message);
   });
 
-  // Handle the "disconnect" event when a client disconnects
   socket.on("disconnect", async () => {
     console.log(`User disconnected: ${socket.id}`);
-    // Update the user's connection status in MongoDB
-    await User.findOneAndUpdate({ userID: socket.id }, { connected: false });
-    // Remove the socket from selectedUsers Map
+    await User.findOneAndUpdate(
+      { socketID: socket.id },
+      { connected: false, socketID: null }
+    );
     selectedUsers.delete(socket.id);
-    // Broadcast the updated user list to all clients
     const users = await getConnectedUsers();
     io.emit("users", users);
   });
 });
 
-// Define a simple API route to test the server
+// Simple API route to test the server
 app.get("/api", (_req, res) => {
-  res.json({ message: "Hello from the server!" }); // Respond with a JSON message
+  res.json({ message: "Hello from the server!" });
 });
 
-// Start the HTTP server
+// Start the server
 httpServer.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`); // Log server startup
+  console.log(`Server is running on http://localhost:${PORT}`);
 });

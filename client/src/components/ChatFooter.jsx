@@ -1,26 +1,35 @@
 import { useState, useEffect, useRef } from "react";
 
-// ChatFooter component handles message input and sending for public or private chats
-export const ChatFooter = ({ socket, selectedUser }) => {
+export const ChatFooter = ({ socket, selectedUser, currentUserID }) => {
   const [message, setMessage] = useState("");
   const typingTimeoutRef = useRef(null);
 
-  // Handle typing indicator ✍️
+  useEffect(() => {
+    console.log(
+      "ChatFooter: currentUserID:",
+      currentUserID,
+      "selectedUser:",
+      selectedUser
+    );
+  }, [currentUserID, selectedUser]);
+
   const handleTyping = () => {
+    if (!currentUserID) {
+      console.log("Cannot handle typing: no userID");
+      return;
+    }
     const userName = localStorage.getItem("userName");
     console.log(`${userName} is typing...`);
     const typingData = {
       userName,
-      to: selectedUser ? selectedUser.userID : null, // Include recipient ID for private messages
+      to: selectedUser ? selectedUser.userID : null,
     };
     socket.emit("typing", typingData);
 
-    // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
 
-    // Set timeout to stop typing after 1 second of inactivity
     typingTimeoutRef.current = setTimeout(() => {
       socket.emit("stopTyping", {
         to: selectedUser ? selectedUser.userID : null,
@@ -28,13 +37,15 @@ export const ChatFooter = ({ socket, selectedUser }) => {
     }, 1000);
   };
 
-  // Handle sending public or private messages
   const handleSendMessage = (e) => {
     e.preventDefault();
+    if (!currentUserID) {
+      console.log("Cannot send message: no userID");
+      return;
+    }
     const userName = localStorage.getItem("userName");
     if (message.trim() && userName) {
       if (selectedUser) {
-        // Send private message
         console.log(
           `Sending private message to ${selectedUser.username}: ${message}`
         );
@@ -44,19 +55,17 @@ export const ChatFooter = ({ socket, selectedUser }) => {
           fromUsername: userName,
         });
       } else {
-        // Send public message
         console.log(`Sending public message: ${message} from ${userName}`);
         socket.emit("message", {
           text: message,
           userName,
         });
-        socket.emit("stopTyping", { to: null }); // Stop typing status
+        socket.emit("stopTyping", { to: null });
       }
       setMessage("");
     }
   };
 
-  // Clean timeout on component unmount
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) {
@@ -71,12 +80,15 @@ export const ChatFooter = ({ socket, selectedUser }) => {
         <input
           type="text"
           placeholder={
-            selectedUser ? `Message ${selectedUser.username}` : "Write message"
+            selectedUser
+              ? `Message ${selectedUser.username}`
+              : "Write message..."
           }
           className="message"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleTyping}
+          disabled={!currentUserID} // Temporarily removed for testing
         />
         <button className="sendBtn">SEND</button>
       </form>
