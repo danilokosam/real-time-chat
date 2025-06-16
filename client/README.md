@@ -23,7 +23,7 @@ If you are developing a production application, we recommend using TypeScript wi
 - para finalizar con las paginas **(/pages)** que utilizaran los componentes medianos, login page, chat page, group page, ect...
 
 Esto nos ayudara a separar el trabajo en componentes y que cda uno pueda realizar sus tareas comodamente.
-
+```
   /src
     /components
       NavBar.jsx
@@ -43,3 +43,4 @@ Esto nos ayudara a separar el trabajo en componentes y que cda uno pueda realiza
       HomePage.jsx
       ChatPage.jsx
       GroupPage.jsx
+```
