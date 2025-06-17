@@ -7,6 +7,15 @@ const userSchema = new mongoose.Schema({
   connected: { type: Boolean, default: false },
   sessionToken: { type: String, unique: true, sparse: true }, // Session token for cookie-based persistence
   createdAt: { type: Date, default: Date.now },
+  password: { type: String, required: true },
+  refreshToken: { type: String, default: null }
 });
+
+userModel.methods.toJSON = function () {
+    const object = this.toObject()
+    delete object.password
+    delete object.refreshToken
+    return object
+}
 
 export default mongoose.model("User", userSchema);
