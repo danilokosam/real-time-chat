@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import debounce from "lodash/debounce";
 
 export const ChatFooter = ({ socket, selectedUser, currentUserID }) => {
   const [message, setMessage] = useState("");
@@ -13,12 +14,17 @@ export const ChatFooter = ({ socket, selectedUser, currentUserID }) => {
     );
   }, [currentUserID, selectedUser]);
 
-  const handleTyping = () => {
+  // Debounce typing event to reduce server load
+  const handleTyping = debounce(() => {
     if (!currentUserID) {
       console.log("Cannot handle typing: no userID");
       return;
     }
     const userName = localStorage.getItem("userName");
+    if (!userName) {
+      console.log("Cannot handle typing: no userName in localStorage");
+      return;
+    }
     console.log(`${userName} is typing...`);
     const typingData = {
       userName,
@@ -32,10 +38,11 @@ export const ChatFooter = ({ socket, selectedUser, currentUserID }) => {
 
     typingTimeoutRef.current = setTimeout(() => {
       socket.emit("stopTyping", {
+        userName, // Add userName
         to: selectedUser ? selectedUser.userID : null,
       });
     }, 1000);
-  };
+  }, 500);
 
   const handleSendMessage = (e) => {
     e.preventDefault();
@@ -44,7 +51,11 @@ export const ChatFooter = ({ socket, selectedUser, currentUserID }) => {
       return;
     }
     const userName = localStorage.getItem("userName");
-    if (message.trim() && userName) {
+    if (!userName) {
+      console.log("Cannot send message: no userName in localStorage");
+      return;
+    }
+    if (message.trim()) {
       if (selectedUser) {
         console.log(
           `Sending private message to ${selectedUser.username}: ${message}`
@@ -54,13 +65,22 @@ export const ChatFooter = ({ socket, selectedUser, currentUserID }) => {
           to: selectedUser.userID,
           fromUsername: userName,
         });
+        // Emit stopTyping for private chat
+        socket.emit("stopTyping", {
+          userName, // Add userName
+          to: selectedUser.userID,
+        });
       } else {
         console.log(`Sending public message: ${message} from ${userName}`);
         socket.emit("message", {
           text: message,
           userName,
         });
-        socket.emit("stopTyping", { to: null });
+        // Emit stopTyping for public chat
+        socket.emit("stopTyping", {
+          userName, // Add userName
+          to: null,
+        });
       }
       setMessage("");
     }
@@ -87,8 +107,10 @@ export const ChatFooter = ({ socket, selectedUser, currentUserID }) => {
           className="message"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleTyping}
-          disabled={!currentUserID} // Temporarily removed for testing
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") handleTyping();
+          }}
+          disabled={!currentUserID}
         />
         <button className="sendBtn">SEND</button>
       </form>
