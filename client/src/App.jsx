@@ -1,18 +1,13 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { Home } from "./components/Home";
-import { ChatPage } from "./components/ChatPage";
+import { Navigation } from "./router/Navigation"; // this component defines the main routes of the application
 
 // Esto es socket IO
 
+
 export const App = () => {
   return (
-    <BrowserRouter>
-      <div>
-        <Routes>
-          <Route path="/" element={<Home />}></Route>
-          <Route path="/chat" element={<ChatPage />}></Route>
-        </Routes>
-      </div>
-    </BrowserRouter>
+    <>
+      <Navigation />
+
+    </>
   );
 };
