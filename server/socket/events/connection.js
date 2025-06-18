@@ -14,10 +14,12 @@ export default async function handleConnection(socket, io) {
   socket.on("disconnect", async () => {
     console.log(`User disconnected: ${socket.id}`);
     try {
+      const currentDate = new Date()
+      
       // Update user status in database to disconnected
       await User.findOneAndUpdate(
         { socketID: socket.id },
-        { connected: false, socketID: null }
+        { connected: false, socketID: null, lastTimeOnline: currentDate }
       );
 
       // Remove selected user entry for this socket

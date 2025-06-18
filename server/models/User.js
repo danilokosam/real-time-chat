@@ -8,7 +8,8 @@ const userSchema = new mongoose.Schema({
   sessionToken: { type: String, unique: true, sparse: true }, // Session token for cookie-based persistence
   createdAt: { type: Date, default: Date.now },
   password: { type: String, required: true },
-  refreshToken: { type: String, default: null }
+  refreshToken: { type: String, default: null },
+  lastTimeOnline: { type: Date, default: Date.now }
 });
 
 userModel.methods.toJSON = function () {

@@ -9,6 +9,7 @@ export const getConnectedUsers = async () => {
     username: user.username,
     connected: user.connected,
     unreadCount: 0,
+    lastTimeOnline: user.lastTimeOnline
   }));
 };
 
