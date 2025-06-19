@@ -1,5 +1,5 @@
 import User from "../../models/User.js";
-import { getConnectedUsers } from "../../utils/users.js";
+import { getConnectedUsers, getDisconnectedUsers } from "../../utils/users.js";
 import { setSelectedUser, deleteSelectedUser } from "../../utils/store.js";
 
 // Handle Socket.IO connection and disconnection events
@@ -25,9 +25,12 @@ export default async function handleConnection(socket, io) {
       // Remove selected user entry for this socket
       deleteSelectedUser(socket.id);
 
+      const disconnectedUsers = await getDisconnectedUsers()
+
       // Broadcast updated user list to all clients
-      const users = await getConnectedUsers();
-      io.emit("users", users);
+      const connectedUsers = await getConnectedUsers();
+      io.emit("connectedUsers", connectedUsers);
+      io.emit("disconnectedUsers", disconnectedUsers);
     } catch (error) {
       console.error(`Error in disconnect handler: ${error.message}`);
     }
