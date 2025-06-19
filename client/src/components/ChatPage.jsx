@@ -236,7 +236,7 @@ export const ChatPage = () => {
     };
 
     // Register Socket.IO event listeners
-    socket.on("users", handleUsers);
+    socket.on("connectedUsers", handleUsers);
     socket.on("messageResponse", handleMessageResponse);
     socket.on("privateMessage", handlePrivateMessage);
     socket.on("typingResponse", handleTypingResponse);
