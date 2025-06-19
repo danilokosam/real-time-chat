@@ -50,16 +50,15 @@ This project was developed using a robust set of modern, in-demand technologies,
 - **MongoDB**: A NoSQL database for flexible storage of users and messages.
 
 ### Others :
-- **ESlint**: Linting tool that helps maintain code quality, identify problematic patterns, and ensure consistent coding.
+- **ESLint**: Linting tool that helps maintain code quality, identify problematic patterns, and ensure consistent coding.
 - **Mongoose**: A MongoDB object model for Node.js, providing a schema-based solution for modeling application data, making interaction with MongoDB simpler and more structured.
 - **JWT (JSON Web Tokens)**: A standard for creating access tokens that enable secure user authentication within your application.
-- **npm**: Node.js package manager, used to install and manage project dependencies on both the frontend and backend.
-
 - **cookie-parser**: Parses cookies attached to client requests, used for authentication and session handling.
 - **apiRoutes**: Main entry point for all backend API endpoints, organizes and handles HTTP routes.
-- **dotenv**: Loads environment variables from a .env file into process.env for configuration management.
 - **Lodash**: Utility library for advanced data manipulation and functional programming helpers.
 - **uuid**: Generates unique identifiers (UUIDs) for users and messages.
+- **dotenv**: Loads environment variables from a .env file into process.env for configuration management.
+- **npm**: Node.js package manager, used to install and manage project dependencies on both the frontend and backend.
 - **JSON**: Native JavaScript object for data serialization, API responses, and configuration.
 - **Markdown**: Used for project documentation and formatting in files like README.md
 - **Git**: Distributed version control system for tracking changes in source code and enabling collaborative development.
