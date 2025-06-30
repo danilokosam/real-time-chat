@@ -17,5 +17,6 @@ export const getUnreadMessages = async (userID) => {
   return await Message.find({
     to: userID,
     isPrivate: true,
+    readBy: { $ne: userID },
   }).lean();
 };

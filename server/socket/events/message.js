@@ -32,12 +32,15 @@ export default async function handleMessage(socket, io, data) {
       from: socket.userID, // Sender's user ID
       fromUsername: data.userName, // Sender's username
       to: null, // Null for public messages
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      }), // Formatted timestamp
+      timestamp: new Date().toISOString(), // Use ISO string
+      // timestamp: new Date().toLocaleTimeString([], {
+      //   hour: "2-digit",
+      //   minute: "2-digit",
+      //   hour12: true,
+      // }), // Formatted timestamp
       isPrivate: false, // Mark as public
+      readBy: [], // Initialize readBy
+      readAt: null, // Initialize readAt
     };
 
     // Save message to database

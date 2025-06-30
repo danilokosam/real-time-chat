@@ -1,9 +1,9 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import apiRoutes from "./routes/api.js";
+import authRoutes from "./routes/auth.routes.js";
 import { CORS_ORIGIN } from "./utils/constants.js";
-import { errorHandler } from "./middlewares/errorHandler.js"
+import { errorHandler } from "./middlewares/errorHandler.js";
 
 const app = express();
 
@@ -21,6 +21,6 @@ app.use(express.json());
 app.use(errorHandler);
 
 // Mount API routes
-app.use("/api", apiRoutes);
+app.use("/api/auth", authRoutes);
 
 export default app;

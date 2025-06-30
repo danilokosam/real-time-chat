@@ -8,12 +8,12 @@ import {
   handleClearUnreadMessages,
   handleConnection,
   handleUpdateConnectionStatus,
+  handleMarkMessageRead,
 } from "./events/index.js";
 import { cookieMiddleware } from "./middleware.js";
 
 // Initialize Socket.IO and register event handlers
 export const initializeSocket = (io) => {
-  // Apply cookie parsing middleware
   io.use(cookieMiddleware);
 
   // Handle socket connections
@@ -34,6 +34,9 @@ export const initializeSocket = (io) => {
     );
     socket.on("updateConnectionStatus", (data) =>
       handleUpdateConnectionStatus(socket, io, data)
+    );
+    socket.on("markMessageRead", (data) =>
+      handleMarkMessageRead(socket, io, data)
     );
     socket.on("error", (err) =>
       console.error(`Socket ${socket.id} error: ${err.message}`)

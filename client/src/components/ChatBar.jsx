@@ -1,31 +1,17 @@
+// client/src/components/ChatBar.jsx
 import { useState, useEffect } from "react";
+import { useSocketContext } from "../context/useSocketContext";
+import { useUsers } from "../hooks/useUsers";
+import { useUnreadMessages } from "../hooks/useUnreadMessages";
 
-export const ChatBar = ({ socket, setSelectedUser, currentUserID, users }) => {
-  const [unreadMessages, setUnreadMessages] = useState([]);
+export const ChatBar = ({ setSelectedUser }) => {
+  const { socket } = useSocketContext();
+  const { users, currentUserID } = useUsers();
+  const { unreadMessages } = useUnreadMessages();
   const [currentSelectedUser, setCurrentSelectedUser] = useState(null);
 
   useEffect(() => {
-    const handleUnreadMessages = (messages) => {
-      console.log("Received unread messages:", messages);
-      setUnreadMessages(messages);
-    };
-
-    const handleUsernameError = (message) => {
-      console.error("Username error in ChatBar:", message);
-      // Handled by ChatPage.jsx
-    };
-
-    socket.on("unreadMessages", handleUnreadMessages);
-    socket.on("usernameError", handleUsernameError);
-
-    return () => {
-      socket.off("unreadMessages", handleUnreadMessages);
-      socket.off("usernameError", handleUsernameError);
-    };
-  }, [socket]);
-
-  useEffect(() => {
-    console.log("Users prop updated:", users);
+    console.log("Users from useUsers:", users);
   }, [users]);
 
   const processedUsers = users

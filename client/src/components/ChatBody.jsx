@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { MessageItem } from "./MessageItem";
 
 // ChatBody component displays public or private messages based on selectedUser
 export const ChatBody = ({
@@ -7,8 +8,10 @@ export const ChatBody = ({
   selectedUser,
   typingStatus,
   lastMessageRef,
+  currentUserID,
 }) => {
   const navigate = useNavigate();
+  const userName = localStorage.getItem("userName");
 
   // Handle leaving the chat
   const handleLeaveChat = () => {
@@ -48,34 +51,16 @@ export const ChatBody = ({
 
       <div className="message__container">
         {messagesToDisplay.map((message) => (
-          <div className="message__chats" key={message.id}>
-            <p className="sender__name">
-              {selectedUser
-                ? message.fromSelf
-                  ? "You"
-                  : message.fromUsername
-                : message.fromUsername === localStorage.getItem("userName")
-                ? "You"
-                : message.fromUsername}
-            </p>
-            <div
-              className={
-                selectedUser
-                  ? message.fromSelf
-                    ? "message__sender"
-                    : "message__recipient"
-                  : message.fromUsername === localStorage.getItem("userName")
-                  ? "message__sender"
-                  : "message__recipient"
-              }
-            >
-              <p>{message.content}</p>
-              <p className="message__timestamp">{message.timestamp}</p>
-            </div>
-          </div>
+          <MessageItem
+            key={message.id}
+            message={message}
+            userName={userName}
+            isPrivate={!!selectedUser}
+            selectedUser={selectedUser}
+            currentUserID={currentUserID}
+          />
         ))}
 
-        {/* Show typing status only if relevant */}
         {typingStatus && (
           <div className="message__status">
             <p>{typingStatus}</p>

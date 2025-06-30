@@ -8,3 +8,8 @@ export const generateAccessToken = (payload) => {
 export const generateRefreshToken = (payload) => {
   return jwt.sign(payload, SECRET_REFRESH_TOKEN, { expiresIn: "7d" });
 };
+
+export const verify = (token, type) => {
+  const secret = type === "access" ? SECRET_ACCESS_TOKEN : SECRET_REFRESH_TOKEN;
+  return jwt.verify(token, secret);
+};

@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef } from "react";
+import { useSocketContext } from "../context/useSocketContext";
+import { useUsers } from "../hooks/useUsers";
 import debounce from "lodash/debounce";
 
-export const ChatFooter = ({ socket, selectedUser, currentUserID }) => {
+export const ChatFooter = ({ selectedUser }) => {
+  const { socket } = useSocketContext();
+  const { currentUserID } = useUsers();
   const [message, setMessage] = useState("");
   const typingTimeoutRef = useRef(null);
 
@@ -29,6 +33,7 @@ export const ChatFooter = ({ socket, selectedUser, currentUserID }) => {
     const typingData = {
       userName,
       to: selectedUser ? selectedUser.userID : null,
+      from: currentUserID,
     };
     socket.emit("typing", typingData);
 
@@ -38,8 +43,9 @@ export const ChatFooter = ({ socket, selectedUser, currentUserID }) => {
 
     typingTimeoutRef.current = setTimeout(() => {
       socket.emit("stopTyping", {
-        userName, // Add userName
+        userName,
         to: selectedUser ? selectedUser.userID : null,
+        from: currentUserID,
       });
     }, 1000);
   }, 500);
@@ -64,22 +70,26 @@ export const ChatFooter = ({ socket, selectedUser, currentUserID }) => {
           content: message,
           to: selectedUser.userID,
           fromUsername: userName,
+          from: currentUserID,
         });
         // Emit stopTyping for private chat
         socket.emit("stopTyping", {
           userName, // Add userName
           to: selectedUser.userID,
+          from: currentUserID,
         });
       } else {
         console.log(`Sending public message: ${message} from ${userName}`);
         socket.emit("message", {
           text: message,
           userName,
+          from: currentUserID,
         });
         // Emit stopTyping for public chat
         socket.emit("stopTyping", {
           userName, // Add userName
           to: null,
+          from: currentUserID,
         });
       }
       setMessage("");

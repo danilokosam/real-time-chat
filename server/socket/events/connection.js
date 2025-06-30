@@ -17,7 +17,7 @@ export default async function handleConnection(socket, io) {
       // Update user status in database to disconnected
       await User.findOneAndUpdate(
         { socketID: socket.id },
-        { connected: false, socketID: null }
+        { $set: { connected: false }, $unset: { socketID: "" } }
       );
 
       // Remove selected user entry for this socket

@@ -30,12 +30,15 @@ export default async function handlePrivateMessage(
       from: socket.userID,
       fromUsername,
       to,
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      }),
+      timestamp: new Date().toISOString(),
+      // timestamp: new Date().toLocaleTimeString([], {
+      //   hour: "2-digit",
+      //   minute: "2-digit",
+      //   hour12: true,
+      // }),
       isPrivate: true,
+      readBy: [],
+      readAt: null,
     };
 
     // Save message to database

@@ -5,6 +5,7 @@ import connectDB from "./config/db.js";
 import User from "./models/User.js";
 import { initializeSocket } from "./socket/index.js";
 import { PORT, CORS_ORIGIN } from "./utils/constants.js";
+import mongoose from "mongoose";
 
 // Initialize HTTP server
 const httpServer = createServer(app);
@@ -28,7 +29,10 @@ const startServer = async () => {
     console.log("MongoDB connection established ✅");
 
     // Reset user connection status
-    await User.updateMany({}, { $set: { connected: false, socketID: null } });
+    await User.updateMany(
+      {},
+      { $set: { connected: false }, $unset: { socketID: "" } }
+    );
     console.log("Reset all users' connected status and socketID on startup ✅");
 
     // Initialize Socket.IO event handlers
@@ -60,6 +64,9 @@ const shutdown = async (signal) => {
         else resolve();
       });
     });
+    await mongoose.connection.close();
+    console.log("MongoDB connection closed ✅");
+    
     console.log("HTTP server closed ✅");
 
     // MongoDB connection is closed in config/db.js
