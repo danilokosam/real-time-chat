@@ -1,5 +1,8 @@
 import { useNavigate } from "react-router-dom";
-import { MessageItem } from "./MessageItem";
+import { ChatHeader } from "./ChatHeader";
+import { MessageList } from "./MessageList";
+import { useMemo, useEffect } from "react";
+import { leaveChat } from "../utils/authUtils";
 
 // ChatBody component displays public or private messages based on selectedUser
 export const ChatBody = ({
@@ -13,61 +16,50 @@ export const ChatBody = ({
   const navigate = useNavigate();
   const userName = localStorage.getItem("userName");
 
+  useEffect(() => {
+    if (!userName) {
+      console.warn("⚠️ No userName found in localStorage");
+    }
+  }, [userName]);
+
   // Handle leaving the chat
   const handleLeaveChat = () => {
-    localStorage.removeItem("userName");
-    navigate("/");
-    window.location.reload();
+    leaveChat(navigate);
   };
 
   // Determine messages to display
-  const messagesToDisplay = selectedUser
-    ? privateMessages[selectedUser.userID] || []
-    : messages;
+  const messagesToDisplay = useMemo(() => {
+    return selectedUser ? privateMessages[selectedUser.userID] || [] : messages;
+  }, [selectedUser, privateMessages, messages]);
 
   // Log private messages for debugging
-  console.log("ChatBody rendering, privateMessages:", privateMessages);
-  console.log("ChatBody rendering, selectedUser:", selectedUser);
-  console.log(
-    "Private messages for selected user:",
-    selectedUser
-      ? privateMessages[selectedUser.userID] || []
-      : "N/A (public chat)"
-  );
-  console.log("Messages to render:", messagesToDisplay);
+  useEffect(() => {
+    console.log("ChatBody rendering, privateMessages:", privateMessages);
+    console.log("ChatBody rendering, selectedUser:", selectedUser);
+    console.log(
+      "Private messages for selected user:",
+      selectedUser
+        ? privateMessages[selectedUser.userID] || []
+        : "N/A (public chat)"
+    );
+    console.log("Messages to render:", messagesToDisplay);
+  }, [privateMessages, selectedUser, messagesToDisplay]);
 
   return (
     <>
-      <header className="chat__mainHeader">
-        <p>
-          {selectedUser
-            ? `Private Chat with ${selectedUser.username}`
-            : "Hangout with Colleagues"}
-        </p>
-        <button className="leaveChat__btn" onClick={handleLeaveChat}>
-          LEAVE CHAT
-        </button>
-      </header>
-
-      <div className="message__container">
-        {messagesToDisplay.map((message) => (
-          <MessageItem
-            key={message.id}
-            message={message}
-            userName={userName}
-            isPrivate={!!selectedUser}
-            selectedUser={selectedUser}
-            currentUserID={currentUserID}
-          />
-        ))}
-
-        {typingStatus && (
-          <div className="message__status">
-            <p>{typingStatus}</p>
-          </div>
-        )}
-        <div ref={lastMessageRef} />
-      </div>
+      <ChatHeader
+        selectedUser={selectedUser}
+        handleLeaveChat={handleLeaveChat}
+      />
+      <MessageList
+        messages={messagesToDisplay}
+        userName={userName}
+        isPrivate={!!selectedUser}
+        selectedUser={selectedUser}
+        currentUserID={currentUserID}
+        lastMessageRef={lastMessageRef}
+        typingStatus={typingStatus}
+      />
     </>
   );
 };
