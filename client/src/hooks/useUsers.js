@@ -6,6 +6,9 @@ export const useUsers = () => {
   const { socket, setConnectionError } = useSocketContext();
   const [users, setUsers] = useState([]);
   const [currentUserID, setCurrentUserID] = useState(null);
+  const [userName, setUserName] = useState(
+    localStorage.getItem("userName") || ""
+  );
 
   useEffect(() => {
     console.log("🌀 useUsers mounted or socket changed");
@@ -19,18 +22,22 @@ export const useUsers = () => {
       return;
     }
 
-    const userName = localStorage.getItem("userName");
+    const storedUserName = localStorage.getItem("userName");
     const token = localStorage.getItem("accessToken");
 
-    if (!userName) {
+    if (!storedUserName) {
       console.error("❌ No userName found in localStorage");
+      setUserName("");
       return;
     }
 
     if (!token) {
       console.error("❌ No accessToken found in localStorage");
+      setUserName("");
       return;
     }
+
+    setUserName(storedUserName);
 
     try {
       const decoded = jwtDecode(token);
@@ -48,8 +55,8 @@ export const useUsers = () => {
 
     // 🧠 Emit newUser SOLO al conectarse
     const emitNewUser = () => {
-      socket.emit("newUser", { userName });
-      console.log("📤 Emitted newUser on socket connect:", userName);
+      socket.emit("newUser", { userName: storedUserName });
+      console.log("📤 Emitted newUser on socket connect:", storedUserName);
     };
 
     // ✅ Importante: solo una vez por cada reconexión
@@ -70,6 +77,7 @@ export const useUsers = () => {
       console.error("🚨 Username error:", message);
       setConnectionError(message);
       localStorage.removeItem("userName");
+      setUserName("");
       setTimeout(() => {
         window.location.href = "/";
       }, 3000);
@@ -86,5 +94,5 @@ export const useUsers = () => {
     };
   }, [socket, setConnectionError]);
 
-  return { users, currentUserID, setCurrentUserID };
+  return { users, currentUserID, setCurrentUserID, userName };
 };
