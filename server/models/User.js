@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   password: { type: String, required: true },
   refreshToken: { type: String, default: null },
+  lastTimeOnline: { type: Date, default: Date.now }
 });
 
 userSchema.methods.toJSON = function () {
