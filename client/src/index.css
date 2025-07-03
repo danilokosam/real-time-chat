@@ -1,10 +1,23 @@
 @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;500;600;700;800;900&display=swap");
 @import "tailwindcss";
+
+@theme{
+  --color-backgroud: #D6CECE;
+  --color-icon: #121111;
+  --color-violet-primary: #7257B4;
+  --color-violet-secondary: #9B9BFF;
+  --color-voilet-ligth: #FBF6FD;
+  --color-gray-chat-response: #EEEEEE;
+  --color-red-notification: #FF0606;
+}
 * {
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+  /* margin: 0; estos dan problema con tailwindcss
+  padding: 0; */
   font-family: "Poppins", sans-serif;
+}
+body {
+  background-color: #D6CECE;
 }
 .home__container {
   width: 100%;
