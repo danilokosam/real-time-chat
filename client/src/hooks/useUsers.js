@@ -53,19 +53,28 @@ export const useUsers = () => {
       console.error("❌ Failed to decode token:", error.message);
     }
 
-    // 🧠 Emit newUser SOLO al conectarse
+    // Emit newUser cuando el socket esté conectado
     const emitNewUser = () => {
-      socket.emit("newUser", { userName: storedUserName });
-      console.log("📤 Emitted newUser on socket connect:", storedUserName);
+      if (socket.connected) {
+        socket.emit("newUser", { userName: storedUserName });
+        console.log("📤 Emitted newUser:", storedUserName);
+      } else {
+        console.log("⏳ Socket not connected yet, waiting...");
+      }
     };
 
-    // ✅ Importante: solo una vez por cada reconexión
-    socket.once("connect", emitNewUser);
+    // Si ya está conectado, emitir inmediatamente
+    if (socket.connected) {
+      emitNewUser();
+    } else {
+      // Si no está conectado, esperar a que se conecte
+      socket.once("connect", emitNewUser);
+    }
 
     const handleUsers = (data) => {
       console.log("📥 Received users:", data);
 
-      // ⚠️ Eliminar duplicados por si acaso
+      // Eliminar duplicados por si acaso
       const uniqueUsers = Array.from(
         new Map(data.map((u) => [u.userID, u])).values()
       );
@@ -77,6 +86,7 @@ export const useUsers = () => {
       console.error("🚨 Username error:", message);
       setConnectionError(message);
       localStorage.removeItem("userName");
+      localStorage.removeItem("accessToken");
       setUserName("");
       setTimeout(() => {
         window.location.href = "/";

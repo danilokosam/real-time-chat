@@ -1,10 +1,7 @@
-import { useNavigate } from "react-router-dom";
 import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import { useMemo, useEffect } from "react";
-import { leaveChat } from "../utils/authUtils";
 
-// ChatBody component displays public or private messages based on selectedUser
 export const ChatBody = ({
   messages,
   privateMessages,
@@ -13,7 +10,6 @@ export const ChatBody = ({
   lastMessageRef,
   currentUserID,
 }) => {
-  const navigate = useNavigate();
   const userName = localStorage.getItem("userName");
 
   useEffect(() => {
@@ -22,28 +18,55 @@ export const ChatBody = ({
     }
   }, [userName]);
 
-  // Handle leaving the chat
   const handleLeaveChat = () => {
-    leaveChat(navigate);
+    localStorage.removeItem("userName");
+    window.location.reload();
   };
 
-  // Determine messages to display
+  // Determinar mensajes a mostrar con mejor debugging
   const messagesToDisplay = useMemo(() => {
-    return selectedUser ? privateMessages[selectedUser.userID] || [] : messages;
-  }, [selectedUser, privateMessages, messages]);
+    console.log("=== ChatBody Debug Info ===");
+    console.log("selectedUser:", selectedUser);
+    console.log("privateMessages object:", privateMessages);
+    console.log("public messages:", messages);
+    console.log("currentUserID:", currentUserID);
 
-  // Log private messages for debugging
+    if (selectedUser) {
+      // Para chat privado, usar el userID del usuario seleccionado como clave
+      const userMessages = privateMessages[selectedUser.userID] || [];
+      console.log(`Private messages for user ${selectedUser.username} (ID: ${selectedUser.userID}):`, userMessages);
+      console.log("Number of private messages:", userMessages.length);
+      return userMessages;
+    } else {
+      // Para chat público
+      console.log("Public messages:", messages);
+      console.log("Number of public messages:", messages.length);
+      return messages;
+    }
+  }, [selectedUser, privateMessages, messages, currentUserID]);
+
+  // Log adicional cuando cambian los mensajes
   useEffect(() => {
-    console.log("ChatBody rendering, privateMessages:", privateMessages);
-    console.log("ChatBody rendering, selectedUser:", selectedUser);
-    console.log(
-      "Private messages for selected user:",
-      selectedUser
-        ? privateMessages[selectedUser.userID] || []
-        : "N/A (public chat)"
-    );
-    console.log("Messages to render:", messagesToDisplay);
-  }, [privateMessages, selectedUser, messagesToDisplay]);
+    console.log("=== Messages Updated ===");
+    console.log("Chat type:", selectedUser ? "Private" : "Public");
+    console.log("Messages to display:", messagesToDisplay);
+    console.log("Message count:", messagesToDisplay.length);
+    
+    if (selectedUser) {
+      console.log("All private message keys:", Object.keys(privateMessages));
+      console.log(`Looking for messages with key: ${selectedUser.userID}`);
+    }
+  }, [messagesToDisplay, selectedUser, privateMessages]);
+
+  // Log cuando se selecciona un usuario diferente
+  useEffect(() => {
+    if (selectedUser) {
+      console.log("=== User Selected ===");
+      console.log("Selected user:", selectedUser);
+      console.log("Available private message keys:", Object.keys(privateMessages));
+      console.log("Messages for this user:", privateMessages[selectedUser.userID] || []);
+    }
+  }, [selectedUser]);
 
   return (
     <>

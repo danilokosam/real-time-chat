@@ -30,7 +30,7 @@ export default async function handleMessage(socket, io, data) {
       id: uuidv4(), // Generate unique message ID
       content: data.text.trim(), // Sanitize message content
       from: socket.userID, // Sender's user ID
-      fromUsername: data.userName, // Sender's username
+      fromUsername: data.name, // Sender's username
       to: null, // Null for public messages
       timestamp: new Date().toISOString(), // Use ISO string
       // timestamp: new Date().toLocaleTimeString([], {

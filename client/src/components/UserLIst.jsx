@@ -1,43 +1,40 @@
-import { getUnreadCountBySender } from "../utils/messageUtils";
-
 export const UserList = ({
   users,
   currentSelectedUser,
   handleUserClick,
-  unreadMessages,
 }) => {
   return (
-    <div className="chat__users">
+    <div className="space-y-3">
       {users.length > 0 ? (
         users.map((user) => {
-          const unreadCount = getUnreadCountBySender(
-            unreadMessages,
-            user.userID,
-            currentSelectedUser
-          );
+          const isSelected = currentSelectedUser?.userID === user.userID;
           return (
-            <p
+            <button
               key={user.userID}
-              className={user.self ? "current-user" : "user-selectable"}
+              className={`w-full p-4 text-left rounded-lg transition-all duration-200 ${
+                isSelected 
+                  ? 'bg-indigo-50 border-2 border-indigo-200' 
+                  : 'hover:bg-slate-50 border-2 border-transparent'
+              }`}
               onClick={() => handleUserClick(user)}
             >
-              {user.self ? `${user.username} (You)` : user.username}
-              <span
-                className={`connection-indicator ${
-                  user.connected ? "online" : "offline"
-                }`}
-              ></span>
-              <span className="connection-text">
-                {user.connected ? "Online" : "Offline"}
-              </span>
-              {!user.self && unreadCount > 0 && (
-                <span className="unread-indicator">{unreadCount}</span>
-              )}
-            </p>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-3 h-3 bg-green-400 rounded-full"></div>
+                  <span className="font-medium text-slate-900">
+                    {user.username}
+                  </span>
+                </div>
+                <span className="text-sm text-green-600">Online</span>
+              </div>
+            </button>
           );
         })
       ) : (
-        <p className="no-users">No users connected</p>
+        <div className="text-center py-8">
+          <p className="text-slate-500 mb-2">No users online</p>
+          <p className="text-sm text-slate-400">Waiting for connections...</p>
+        </div>
       )}
     </div>
   );

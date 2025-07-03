@@ -1,4 +1,3 @@
-// src/context/SocketProvider.jsx
 import { useEffect, useState, useRef } from "react";
 import { io } from "socket.io-client";
 import { SocketContext } from "./SocketContext";
@@ -9,12 +8,84 @@ let socketInstance = null;
 export const SocketProvider = ({ children }) => {
   const [connectionError, setConnectionError] = useState(null);
   const socketRef = useRef(null);
+  const [socket, setSocket] = useState(null); // Nuevo estado para forzar re-render
 
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     const hasUser = Boolean(localStorage.getItem("userName"));
-    console.log("🔐 Checking isLoggedIn on mount:", hasUser);
-    return hasUser;
+    const hasToken = Boolean(localStorage.getItem("accessToken"));
+    console.log("🔐 Checking isLoggedIn on mount:", { hasUser, hasToken });
+    return hasUser && hasToken;
   });
+
+  // Función para crear el socket
+  const createSocket = (token) => {
+    console.log("🚀 Creating new socket connection with token...");
+    
+    if (socketInstance) {
+      socketInstance.disconnect();
+      socketInstance = null;
+    }
+
+    socketInstance = io("http://localhost:3001", {
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+      auth: {
+        token,
+      },
+    });
+
+    socketRef.current = socketInstance;
+    setSocket(socketInstance); // Actualizar estado para forzar re-render
+
+    // Eventos del socket
+    socketInstance.on("connect", () => {
+      console.log("✅ Connected to server, socketID:", socketInstance.id);
+      setConnectionError(null);
+    });
+
+    socketInstance.on("connect_error", (error) => {
+      console.error("❌ Connection failed:", error.message);
+      setConnectionError("Failed to connect to server. Retrying...");
+    });
+
+    socketInstance.on("disconnect", (reason) => {
+      console.log("⚠️ Socket disconnected:", reason);
+      setConnectionError("Disconnected from server. Trying to reconnect...");
+    });
+
+    socketInstance.on("reconnect", (attempt) => {
+      console.log("🔁 Socket reconnected after attempt:", attempt);
+      setConnectionError(null);
+    });
+
+    return socketInstance;
+  };
+
+  // Inicializar socket si ya hay token al montar - ESTE ES EL FIX PRINCIPAL
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    const userName = localStorage.getItem("userName");
+    
+    console.log("🔄 SocketProvider mounted, checking existing credentials:", {
+      hasToken: !!token,
+      hasUserName: !!userName,
+      isLoggedIn,
+      socketExists: !!socketInstance
+    });
+
+    if (token && userName && isLoggedIn && !socketInstance) {
+      console.log("🎯 Creating socket on mount with existing credentials");
+      createSocket(token);
+    } else if (socketInstance) {
+      // Si ya existe el socket, asegurar que esté en el estado
+      socketRef.current = socketInstance;
+      setSocket(socketInstance);
+    }
+  }, []); // Sin dependencias para que solo se ejecute al montar
 
   // Método para actualizar login cuando se hace login/logout
   const updateLoginStatus = (status, token) => {
@@ -26,50 +97,14 @@ export const SocketProvider = ({ children }) => {
       localStorage.setItem("accessToken", token);
       console.log("✅ accessToken saved to localStorage");
 
-      // Si el socket ya existe, actualiza auth y reconecta
+      // Crear o reconectar socket
       if (socketInstance) {
-        console.log("♻️ Socket exists, reconnecting with new token...");
+        console.log("♻️ Socket exists, updating auth and reconnecting...");
         socketInstance.auth = { token };
+        socketInstance.disconnect();
         socketInstance.connect();
       } else {
-        console.log("🚀 Creating new socket connection...");
-        // Si no existe, lo creamos de inmediato
-        socketInstance = io("http://localhost:3001", {
-          reconnection: true,
-          reconnectionAttempts: 5,
-          reconnectionDelay: 1000,
-          reconnectionDelayMax: 5000,
-          withCredentials: true,
-          transports: ["websocket", "polling"],
-          auth: {
-            token,
-          },
-        });
-
-        socketRef.current = socketInstance;
-
-        // Eventos del socket
-        socketInstance.on("connect", () => {
-          console.log("✅ Connected to server, socketID:", socketInstance.id);
-          setConnectionError(null);
-        });
-
-        socketInstance.on("connect_error", (error) => {
-          console.error("❌ Connection failed:", error.message);
-          setConnectionError("Failed to connect to server. Retrying...");
-        });
-
-        socketInstance.on("disconnect", (reason) => {
-          console.log("⚠️ Socket disconnected:", reason);
-          setConnectionError(
-            "Disconnected from server. Trying to reconnect..."
-          );
-        });
-
-        socketInstance.on("reconnect", (attempt) => {
-          console.log("🔁 Socket reconnected after attempt:", attempt);
-          setConnectionError(null);
-        });
+        createSocket(token);
       }
     } else {
       console.log("🧹 Logging out. Removing token and disconnecting socket.");
@@ -79,21 +114,21 @@ export const SocketProvider = ({ children }) => {
         socketInstance.disconnect();
         socketInstance = null;
         socketRef.current = null;
+        setSocket(null);
       }
     }
   };
 
-  // Este efecto se encarga de limpiar si se cierra sesión manualmente
+  // Limpiar socket cuando se cierra sesión
   useEffect(() => {
     console.log("🧭 useEffect on isLoggedIn triggered:", isLoggedIn);
 
-    if (!isLoggedIn) {
-      if (socketInstance) {
-        console.log("🔌 Disconnecting socket due to logout");
-        socketInstance.disconnect();
-        socketInstance = null;
-        socketRef.current = null;
-      }
+    if (!isLoggedIn && socketInstance) {
+      console.log("🔌 Disconnecting socket due to logout");
+      socketInstance.disconnect();
+      socketInstance = null;
+      socketRef.current = null;
+      setSocket(null);
     }
 
     return () => {
@@ -109,7 +144,7 @@ export const SocketProvider = ({ children }) => {
   }, [isLoggedIn]);
 
   const value = {
-    socket: socketRef.current,
+    socket: socket, // Usar el estado en lugar de socketRef.current
     connectionError,
     setConnectionError,
     isLoggedIn,
