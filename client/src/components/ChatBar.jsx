@@ -1,22 +1,25 @@
-// client/src/components/ChatBar.jsx
 import { useState, useEffect } from "react";
 import { useSocketContext } from "../context/useSocketContext";
+import { useUserContext } from "../context/useUserContext";
 import { useUsers } from "../hooks/useUsers";
 import { useUnreadMessages } from "../hooks/useUnreadMessages";
 import { processUsers } from "../utils/userUtils";
 import { selectUserForChat, selectPublicChat } from "../utils/socketUtils";
+import { UserList } from "./UserLIst";
 
 export const ChatBar = ({ setSelectedUser }) => {
   const { socket } = useSocketContext();
-  const { users, currentUserID } = useUsers();
+  const { currentUserID } = useUserContext(); // ✅ Usamos contexto global
+  const { users } = useUsers(); // 👈 Aquí sí mantenemos useUsers porque aquí SÍ necesitamos la lista
   const { unreadMessages } = useUnreadMessages();
   const [currentSelectedUser, setCurrentSelectedUser] = useState(null);
 
   useEffect(() => {
-    console.log("Users from useUsers:", users);
+    console.log("📥 Users from useUsers:", users);
   }, [users]);
 
   const processedUsers = processUsers(users, currentUserID);
+
   const handleUserClick = (user) => {
     selectUserForChat(socket, user, setSelectedUser, setCurrentSelectedUser);
   };

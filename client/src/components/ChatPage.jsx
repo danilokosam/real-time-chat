@@ -3,24 +3,22 @@ import { ChatBar } from "./ChatBar";
 import { ChatBody } from "./ChatBody";
 import { ChatFooter } from "./ChatFooter";
 import { useSocketContext } from "../context/useSocketContext";
+import { useUserContext } from "../context/useUserContext";
 import { useMessages } from "../hooks/useMessages";
 import { usePrivateMessages } from "../hooks/usePrivateMessages";
 import { useTyping } from "../hooks/useTyping";
 import { useSocketError } from "../hooks/useSocketError";
-import { useUsers } from "../hooks/useUsers";
 
 export const ChatPage = () => {
-  const { socket, connectionError } = useSocketContext();
+  const { socket, connectionError, isLoggedIn } = useSocketContext();
+  const { currentUserID, userName } = useUserContext(); // ✅ Ahora usamos UserContext
   const { messages } = useMessages();
-  const { currentUserID } = useUsers();
   const [selectedUser, setSelectedUser] = useState(null);
   const { privateMessages } = usePrivateMessages(selectedUser);
   const { typingStatus } = useTyping(selectedUser);
   useSocketError();
   const lastMessageRef = useRef(null);
 
-  const result = useUsers();
-  console.log(result);
   // Auto-scroll to latest message
   useEffect(() => {
     console.log("Messages updated:", messages);
@@ -28,7 +26,12 @@ export const ChatPage = () => {
     lastMessageRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, privateMessages]);
 
-  // Render loading if socket isn't connected
+  // Render loading if not logged in or userName is missing
+  if (!isLoggedIn || !userName) {
+    return <div>Loading...</div>;
+  }
+
+  // Render connection error or connecting message
   if (!socket || !socket.connected) {
     return <div>{connectionError || "Connecting to chat..."}</div>;
   }
@@ -46,7 +49,7 @@ export const ChatPage = () => {
           selectedUser={selectedUser}
           typingStatus={typingStatus}
           lastMessageRef={lastMessageRef}
-          currentUserID={currentUserID}
+          currentUserID={currentUserID} // ✅ Pasamos el ID desde el contexto
         />
         <ChatFooter selectedUser={selectedUser} />
       </div>

@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { useSocketContext } from "../context/useSocketContext";
-import { useUsers } from "../hooks/useUsers";
+import { useUserContext } from "../context/useUserContext";
 import { MessageForm } from "./MessageForm";
 import { sendMessage, handleTyping } from "../utils/socketUtils";
 
 export const ChatFooter = ({ selectedUser }) => {
   const { socket } = useSocketContext();
-  const { currentUserID, userName } = useUsers();
+  const { currentUserID, userName } = useUserContext(); // ✅ Usamos UserContext
   const [message, setMessage] = useState("");
   const typingTimeoutRef = useRef(null);
   const debouncedHandleTyping = useRef(null);
@@ -21,6 +21,11 @@ export const ChatFooter = ({ selectedUser }) => {
   }, [currentUserID, selectedUser]);
 
   useEffect(() => {
+    if (!socket || !currentUserID || !userName) {
+      console.warn("⛔ Socket, currentUserID or userName not ready yet");
+      return;
+    }
+
     debouncedHandleTyping.current = handleTyping(
       socket,
       currentUserID,
@@ -32,7 +37,7 @@ export const ChatFooter = ({ selectedUser }) => {
     const currentTimeout = typingTimeoutRef.current;
 
     return () => {
-      debouncedHandleTyping.current.cancel();
+      debouncedHandleTyping.current?.cancel();
       if (currentTimeout) {
         clearTimeout(currentTimeout);
       }
@@ -51,8 +56,8 @@ export const ChatFooter = ({ selectedUser }) => {
     );
   };
 
-  if (!userName) {
-    console.warn("No userName found");
+  if (!userName || !currentUserID) {
+    console.warn("⛔ No userName or currentUserID found");
     return <div className="error-message">Please log in to send messages</div>;
   }
 

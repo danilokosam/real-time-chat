@@ -1,34 +1,71 @@
-import { useState } from "react";
+import { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSocketContext } from "../context/useSocketContext";
+import { UserContext } from "../context/UserContextInstance";
 
 export const Home = () => {
   const navigate = useNavigate();
-  const { updateLoginStatus } = useSocketContext();
+  const { updateLoginStatus, isLoggedIn } = useSocketContext();
+  const { userName, setUserName, logout } = useContext(UserContext); // Get userName from context ( UserContext )
   const [isRegisterMode, setIsRegisterMode] = useState(false); // Toggle between login and register
-  const [userName, setUserName] = useState("");
+  const [userNameInput, setUserNameInput] = useState(""); // Renamed to avoid conflict
   const [password, setPassword] = useState("");
-  const [email, setEmail] = useState(""); // New state for email
+  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const [loginPending, setLoginPending] = useState(false); // Track login state
 
+  console.log("Home render:", { isLoggedIn, userName });
+
+  // Navigate to /chat when logged in and userName is set
+  useEffect(() => {
+    console.log("useEffect de navegación:", { isLoggedIn, userName });
+    if (isLoggedIn && userName) {
+      console.log("✅ Navigating to /chat with userName:", userName);
+      navigate("/chat");
+      setLoginPending(false);
+    }
+  }, [isLoggedIn, userName, navigate]);
+
+  //  // Clear localStorage on initial load if not logged in
+  // useEffect(() => {
+  //   if (!isLoggedIn) {
+  //     localStorage.removeItem("accessToken");
+  //     localStorage.removeItem("userName");
+  //     setUserNameInput(""); // Ensure input is empty
+  //     console.log("🧹 Cleared localStorage on page load (not logged in)");
+  //   }
+  // }, [isLoggedIn]);
+
+  // ✅ Logout handler
+  const handleLogout = () => {
+    updateLoginStatus(false);
+    logout();
+    setUserNameInput(""); // Clear input on logout
+    setPassword("");
+    setEmail("");
+    console.log("🚪 Logged out and cleared inputs");
+    navigate("/");
+  };
+
+  // ✅ Login/register handler
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
     // Client-side validation
-    if (!userName.trim()) {
+    if (!userNameInput.trim()) {
       setError("Username cannot be empty.");
       return;
     }
-    if (userName.length < 3) {
+    if (userNameInput.length < 3) {
       setError("Username must be at least 3 characters long.");
       return;
     }
-    if (userName.length > 20) {
+    if (userNameInput.length > 20) {
       setError("Username cannot be longer than 20 characters.");
       return;
     }
-    if (!/^[a-zA-Z0-9 ]+$/.test(userName)) {
+    if (!/^[a-zA-Z0-9 ]+$/.test(userNameInput)) {
       setError("Username can only contain letters, numbers, and spaces.");
       return;
     }
@@ -41,7 +78,6 @@ export const Home = () => {
       return;
     }
 
-    // Additional validation for registration
     if (isRegisterMode) {
       if (!email.trim()) {
         setError("Email cannot be empty.");
@@ -58,8 +94,8 @@ export const Home = () => {
         ? "http://localhost:3001/api/auth/register"
         : "http://localhost:3001/api/auth/login";
       const body = isRegisterMode
-        ? { username: userName, password, email }
-        : { username: userName, password };
+        ? { username: userNameInput, password, email }
+        : { username: userNameInput, password };
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -84,9 +120,7 @@ export const Home = () => {
           isRegisterMode ? "Registration" : "Login"
         } successful, checking cookies...`
       );
-      // console.log("Cookies:", document.cookie); // Note: httpOnly cookies won't appear here
 
-      // access token retrieved from test-cookie endpoint
       const testResponse = await fetch(
         "http://localhost:3001/api/auth/test-cookie",
         {
@@ -96,7 +130,6 @@ export const Home = () => {
       const testData = await testResponse.json();
       console.log("Test cookie response:", testData);
 
-      // Extract accessToken from response
       let { accessToken } = data;
       if (!accessToken && testData.accessToken) {
         accessToken = testData.accessToken;
@@ -104,11 +137,14 @@ export const Home = () => {
       }
 
       if (accessToken) {
-        localStorage.setItem("accessToken", accessToken);
-        localStorage.setItem("userName", userName);
-        console.log("🚀 Calling updateLoginStatus with:", { accessToken });
-        updateLoginStatus(true, accessToken);
-        navigate("/chat");
+        console.log("🚀 Calling updateLoginStatus with:", {
+          accessToken,
+          username: userNameInput,
+        });
+        setLoginPending(true);
+        updateLoginStatus(true, accessToken, userNameInput);
+        setUserName(userNameInput); // Update UserContext with userName
+        localStorage.setItem("userName", userNameInput); // Persist userName in localStorage
       } else {
         console.warn("⚠️ No accessToken found in response or cookies");
         setError("Authentication failed: token not received.");
@@ -121,65 +157,82 @@ export const Home = () => {
 
   return (
     <div className="home__container text-violet-500">
-      <h2 className="home__header">
-        {isRegisterMode ? "Register for Open Chat" : "Sign in to Open Chat"}
-      </h2>
-      <form onSubmit={handleSubmit}>
-        <label htmlFor="username">Username</label>
-        <input
-          type="text"
-          minLength={3}
-          maxLength={20}
-          name="username"
-          id="username"
-          className="username__input"
-          value={userName}
-          onChange={(e) => setUserName(e.target.value)}
-        />
-        {isRegisterMode && (
-          <>
-            <label htmlFor="email">Email</label>
+      {isLoggedIn ? (
+        <>
+          <h2 className="home__header">Welcome back!</h2>
+          <button
+            onClick={handleLogout}
+            className="home__cta bg-red-500 hover:bg-red-600"
+          >
+            LOG OUT
+          </button>
+        </>
+      ) : (
+        <>
+          <h2 className="home__header">
+            {isRegisterMode ? "Register for Open Chat" : "Sign in to Open Chat"}
+          </h2>
+          {loginPending && <p>Loading...</p>}
+          <form onSubmit={handleSubmit}>
+            <label htmlFor="username">Username</label>
             <input
-              type="email"
-              name="email"
-              id="email"
-              className="email__input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              minLength={3}
+              maxLength={20}
+              name="username"
+              id="username"
+              className="username__input"
+              value={userNameInput}
+              onChange={(e) => setUserNameInput(e.target.value)}
             />
-          </>
-        )}
-        <label htmlFor="password">Password</label>
-        <input
-          type="password"
-          minLength={8}
-          name="password"
-          id="password"
-          className="password__input"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        {error && <p className="error-message">{error}</p>}
-        <button type="submit" className="home__cta">
-          {isRegisterMode ? "REGISTER" : "SIGN IN"}
-        </button>
-      </form>
-      <p>
-        {isRegisterMode ? "Already have an account?" : "Don't have an account?"}{" "}
-        <button
-          type="button"
-          className="toggle__button"
-          onClick={() => {
-            setIsRegisterMode(!isRegisterMode);
-            setError(""); // Clear error when toggling
-            setUserName("");
-            setPassword("");
-            setEmail("");
-          }}
-        >
-          {isRegisterMode ? "Sign in" : "Register"}
-        </button>
-      </p>
+            {isRegisterMode && (
+              <>
+                <label htmlFor="email">Email</label>
+                <input
+                  type="email"
+                  name="email"
+                  id="email"
+                  className="email__input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </>
+            )}
+            <label htmlFor="password">Password</label>
+            <input
+              type="password"
+              minLength={8}
+              name="password"
+              id="password"
+              className="password__input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            {error && <p className="error-message">{error}</p>}
+            <button type="submit" className="home__cta">
+              {isRegisterMode ? "REGISTER" : "SIGN IN"}
+            </button>
+          </form>
+          <p>
+            {isRegisterMode
+              ? "Already have an account?"
+              : "Don't have an account?"}{" "}
+            <button
+              type="button"
+              className="toggle__button"
+              onClick={() => {
+                setIsRegisterMode(!isRegisterMode);
+                setError(""); // Clear error when toggling
+                setUserNameInput("");
+                setPassword("");
+                setEmail("");
+              }}
+            >
+              {isRegisterMode ? "Sign in" : "Register"}
+            </button>
+          </p>
+        </>
+      )}
     </div>
   );
 };
