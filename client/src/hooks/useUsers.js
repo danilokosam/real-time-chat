@@ -37,7 +37,11 @@ export const useUsers = () => {
       console.log("📤 Emitted newUser on socket connect:", userName);
     };
 
-    socket.once("connect", emitNewUser);
+   if (socket.connected) {
+      emitNewUser();
+    } else {
+      socket.once("connect", emitNewUser);
+    }
 
     const handleUsers = (data) => {
       console.log("📥 Received users:", data);

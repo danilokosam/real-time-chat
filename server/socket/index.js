@@ -9,6 +9,8 @@ import {
   handleConnection,
   handleUpdateConnectionStatus,
   handleMarkMessageRead,
+  handleGetMessages,
+  handleGetPrivateMessages,
 } from "./events/index.js";
 import { cookieMiddleware } from "./middleware.js";
 
@@ -24,6 +26,10 @@ export const initializeSocket = (io) => {
       handlePrivateMessage(socket, io, data)
     );
     socket.on("message", (data) => handleMessage(socket, io, data));
+    socket.on("getMessages", () => handleGetMessages(socket));
+    socket.on("getPrivateMessages", (data) =>
+      handleGetPrivateMessages(socket, data)
+    );
     socket.on("typing", (data) => handleTyping(socket, io, data));
     socket.on("stopTyping", (data) => handleStopTyping(socket, io, data));
     socket.on("setSelectedUser", (selectedUserID) =>

@@ -9,8 +9,8 @@ import { UserList } from "./UserLIst";
 
 export const ChatBar = ({ setSelectedUser }) => {
   const { socket } = useSocketContext();
-  const { currentUserID } = useUserContext(); // ✅ Usamos contexto global
-  const { users } = useUsers(); // 👈 Aquí sí mantenemos useUsers porque aquí SÍ necesitamos la lista
+  const { currentUserID } = useUserContext();
+  const { users } = useUsers();
   const { unreadMessages } = useUnreadMessages();
   const [currentSelectedUser, setCurrentSelectedUser] = useState(null);
 

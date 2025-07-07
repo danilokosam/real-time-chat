@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { useSocketContext } from "../context/useSocketContext";
-import { useUsers } from "./useUsers";
 
-export const usePrivateMessages = (selectedUser) => {
+export const usePrivateMessages = (selectedUser, currentUserID) => {
   const { socket } = useSocketContext();
-  const { currentUserID } = useUsers();
   const [privateMessages, setPrivateMessages] = useState({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!socket || !currentUserID) return;
+    if (!socket || !currentUserID || !selectedUser) return;
+
+    console.log(
+      "📡 Subscribed to privateMessage, messageRead & loadPrivateMessages"
+    );
 
     const handlePrivateMessage = ({
       id,
@@ -20,7 +23,7 @@ export const usePrivateMessages = (selectedUser) => {
       readBy,
       readAt,
     }) => {
-      console.log("Received privateMessage:", {
+      console.log("📥 Received privateMessage:", {
         id,
         content,
         from,
@@ -35,14 +38,14 @@ export const usePrivateMessages = (selectedUser) => {
       const fromSelf = from === currentUserID;
 
       if (!otherUserID) {
-        console.warn("Other user ID not available.");
+        console.warn("⚠️ Other user ID not available.");
         return;
       }
 
       setPrivateMessages((prev) => {
         const userMessages = prev[otherUserID] || [];
         if (userMessages.some((msg) => msg.id === id)) {
-          console.log("Duplicate message ignored:", id);
+          console.log("🔁 Duplicate privateMessage ignored:", id);
           return prev;
         }
         return {
@@ -56,7 +59,7 @@ export const usePrivateMessages = (selectedUser) => {
     };
 
     const handleMessageRead = ({ messageID, readBy, readAt }) => {
-      console.log("Received messageRead:", { messageID, readBy, readAt });
+      console.log("📖 Received messageRead:", { messageID, readBy, readAt });
       setPrivateMessages((prev) => {
         const updatedMessages = { ...prev };
         Object.keys(updatedMessages).forEach((userID) => {
@@ -64,23 +67,45 @@ export const usePrivateMessages = (selectedUser) => {
             msg.id === messageID ? { ...msg, readBy, readAt } : msg
           );
         });
-        console.log(
-          "Updated privateMessages with read status:",
-          updatedMessages
-        );
+        console.log("✅ Updated privateMessages with read status");
         return updatedMessages;
       });
     };
 
+    const handleLoadPrivateMessages = ({ userID, messages }) => {
+      console.log("📥 Loaded private messages:", messages);
+      setPrivateMessages((prev) => ({
+        ...prev,
+        [userID]: messages.map((msg) => ({
+          ...msg,
+          fromSelf: msg.from === currentUserID,
+        })),
+      }));
+      setLoading(false);
+    };
+
     socket.on("privateMessage", handlePrivateMessage);
     socket.on("messageRead", handleMessageRead);
+    socket.on("loadPrivateMessages", handleLoadPrivateMessages);
 
-    // Limpieza: eliminar los event listeners
+    // 👉 Emitir para cargar historial
+    console.log(
+      `📤 Requesting private messages: ${currentUserID} ⇄ ${selectedUser}`
+    );
+    socket.emit("getPrivateMessages", {
+      from: currentUserID,
+      to: selectedUser,
+    });
+
     return () => {
+      console.log(
+        "🧹 Unsubscribed from privateMessage, messageRead & loadPrivateMessages"
+      );
       socket.off("privateMessage", handlePrivateMessage);
       socket.off("messageRead", handleMessageRead);
+      socket.off("loadPrivateMessages", handleLoadPrivateMessages);
     };
   }, [socket, currentUserID, selectedUser]);
 
-  return { privateMessages, setPrivateMessages };
+  return { privateMessages, setPrivateMessages, loading };
 };

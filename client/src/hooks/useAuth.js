@@ -1,12 +1,11 @@
 import { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSocketContext } from "../context/useSocketContext";
 import { UserContext } from "../context/UserContextInstance";
 
 export const useAuth = () => {
   const navigate = useNavigate();
-  const { updateLoginStatus, isLoggedIn } = useSocketContext();
-  const { userName, setUserName, logout } = useContext(UserContext);
+  const { updateLoginStatus, isLoggedIn, userName, setUserName, logout } =
+    useContext(UserContext);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [formData, setFormData] = useState({
     userNameInput: "",

@@ -10,47 +10,84 @@ import { useTyping } from "../hooks/useTyping";
 import { useSocketError } from "../hooks/useSocketError";
 
 export const ChatPage = () => {
-  const { socket, connectionError, isLoggedIn } = useSocketContext();
-  const { currentUserID, userName } = useUserContext(); // ✅ Ahora usamos UserContext
-  const { messages } = useMessages();
+  const { socket, connectionError} = useSocketContext();
+  const { currentUserID, userName, authLoading, isLoggedIn } = useUserContext(); // ✅ authLoading agregado
+
+  // Hook de mensajes públicos
+  const { messages, loading: messagesLoading } = useMessages();
+
+  // Usuario seleccionado para chat privado
   const [selectedUser, setSelectedUser] = useState(null);
-  const { privateMessages } = usePrivateMessages(selectedUser);
+
+  // Hook de mensajes privados
+  const { privateMessages, loading: privateLoading } = usePrivateMessages(
+    selectedUser,
+    currentUserID
+  );
+
+  // Hook de estado de escritura
   const { typingStatus } = useTyping(selectedUser);
+
+  // Hook para manejar errores de conexión
   useSocketError();
+
   const lastMessageRef = useRef(null);
 
-  // Auto-scroll to latest message
+  // Auto-scroll cuando llegan mensajes nuevos
   useEffect(() => {
-    console.log("Messages updated:", messages);
-    console.log("Private messages updated:", privateMessages);
+    console.log("📨 Messages updated:", messages);
+    console.log("📨 Private messages updated:", privateMessages);
     lastMessageRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, privateMessages]);
 
-  // Render loading if not logged in or userName is missing
-  if (!isLoggedIn || !userName) {
-    return <div>Loading...</div>;
+  // Debug opcional para verificar flujo
+  console.log({
+    authLoading,
+    isLoggedIn,
+    userName,
+    messagesLoading,
+    selectedUser,
+    privateLoading,
+    socketConnected: socket?.connected,
+  });
+
+  // ⚡ Nueva condición: bloquea render mientras se verifica auth
+  if (authLoading || !isLoggedIn || !userName || messagesLoading) {
+    return <div>Loading chat data...</div>;
   }
 
-  // Render connection error or connecting message
+  // Si hay un usuario seleccionado y se está cargando su historial → loading específico
+  if (selectedUser && privateLoading) {
+    return <div>Loading private conversation...</div>;
+  }
+
+  // Si no hay conexión → mostrar mensaje de conexión
   if (!socket || !socket.connected) {
     return <div>{connectionError || "Connecting to chat..."}</div>;
   }
 
   return (
     <div className="chat">
+      {/* Si hay error de conexión mostrarlo arriba */}
       {connectionError && (
         <div className="connection-error">{connectionError}</div>
       )}
+
+      {/* Barra lateral de usuarios */}
       <ChatBar setSelectedUser={setSelectedUser} />
+
       <div className="chat__main">
+        {/* Cuerpo del chat: muestra mensajes públicos o privados */}
         <ChatBody
           messages={messages}
           privateMessages={privateMessages}
           selectedUser={selectedUser}
           typingStatus={typingStatus}
           lastMessageRef={lastMessageRef}
-          currentUserID={currentUserID} // ✅ Pasamos el ID desde el contexto
+          currentUserID={currentUserID}
         />
+
+        {/* Input para escribir mensajes */}
         <ChatFooter selectedUser={selectedUser} />
       </div>
     </div>
